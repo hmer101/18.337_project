@@ -16,7 +16,7 @@
 
 # Define the custom struct
 mutable struct DroneSwarmParams
-    num_drones::Float64
+    num_drones::Int64
     g::Float64
 
     m_load::Float64
@@ -28,6 +28,7 @@ mutable struct DroneSwarmParams
 
     r_cables::Vector{Vector{Float64}}
     
+    use_nn::Bool
     T_dot_drone_nn::Chain
     T_dot_load_nn::Chain
 end

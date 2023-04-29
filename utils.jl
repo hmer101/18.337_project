@@ -47,3 +47,13 @@ function unflatten(v_flat::Vector{T}, shapes::Vector{Tuple{Int, Vararg{Int64}}})
 
     return v
 end
+
+# Checks if two vectors are the same but pointing in opposite directions
+function are_opposite_directions(v1::Vector, v2::Vector)
+    # Normalize both vectors
+    norm_v1 = v1 ./ norm(v1)
+    norm_v2 = v2 ./ norm(v2)
+
+    # Check if the normalized vectors are negatives of each other
+    return isapprox(norm_v1, -norm_v2)
+end

@@ -28,7 +28,7 @@ mutable struct DroneSwarmParams
 
     r_cables::Vector{Vector{Float64}}
     
-    use_nn::Bool
+    #use_nn::Bool
     T_dot_drone_nn::Chain
     T_dot_load_nn::Chain
 end

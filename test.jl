@@ -3,6 +3,7 @@ begin
     using Rotations
     using LinearAlgebra
     #using math
+    include("utils.jl")
 end
 
 begin
@@ -71,8 +72,78 @@ begin
 
 
     # vector_a = [1, 2, 3]
-    # vector_b = [4 5 6]
-    # v = ones(4)
+    # vector_b = [4, 5, 6]
+    # #v = ones(4)
+    # print(cross(vector_a,vector_b))
+    # print(hat_map(vector_a)*vector_b)
+
+    # I3 = Matrix{Float64}(I, 3, 3)
+    # t = [1 2 3]
+    # println(zeros(3))
+    # println(sqrt(14))
+
+    #M = [Matrix{Float64}(I, 3, 3) for _ in 1:2, _ in 1:3]
+    # M = [zeros(3) for _ in 1:2]
+    # println("next")
+    # println(M)
+
+
+
+    # function flatten_M(M)
+    #     nrows, ncols = size(M) # Get the dimensions of the input matrix
+    
+    #     # Calculate the total size of the output matrix
+    #     total_rows = nrows * size(M[1, 1])[1]
+    #     total_cols = ncols * size(M[1, 1])[2]
+    
+    #     # Initialize M_flat with the correct type and size
+    #     M_flat = Matrix{eltype(M[1, 1])}(undef, total_rows, total_cols)
+    
+    #     # Iterate over the input matrix elements (matrices)
+    #     for i in 1:nrows
+    #         for j in 1:ncols
+    #             row_range = ((i - 1) * size(M[1, 1])[1] + 1):i * size(M[1, 1])[1]
+    #             col_range = ((j - 1) * size(M[1, 1])[2] + 1):j * size(M[1, 1])[2]
+    #             M_flat[row_range, col_range] = M[i, j]
+    #         end
+    #     end
+    
+    #     return M_flat
+    # end
+
+
+    # function unflatten_M(M_flat, nrows, ncols, row_size, col_size)
+    #     # Initialize the output matrix of matrices with the correct type and dimensions
+    #     M = Matrix{Matrix{eltype(M_flat)}}(undef, nrows, ncols)
+    
+    #     # Iterate over the output matrix elements (matrices)
+    #     for i in 1:nrows
+    #         for j in 1:ncols
+    #             row_range = ((i - 1) * row_size + 1):i * row_size
+    #             col_range = ((j - 1) * col_size + 1):j * col_size
+    #             M[i, j] = M_flat[row_range, col_range]
+    #         end
+    #     end
+    
+    #     return M
+    # end
+
+    # # Define a matrix of matrices
+    # M = [reshape(collect(1:9), (3, 3)) for _ in 1:2, _ in 1:2]
+
+    # # Flatten the matrix of matrices
+    # M_flat = flatten_M(M)
+
+    # # Unflatten the flattened matrix to recover the original matrix of matrices
+    # M_recovered = unflatten_M(M_flat, 2, 2, 3, 3)
+
+    # println("Original matrix of matrices:")
+    # println(M)
+    # println("\nFlattened matrix:")
+    # println(M_flat)
+    # println("\nRecovered matrix of matrices:")
+    # println(M_recovered)
+
     # push!(v,5.0)
 
     # #cross_product = cross(vector_a, vector_b)
@@ -81,6 +152,19 @@ begin
     # println(v)
     #println("Star product: ", vector_a*vector_b)
 
+    # Define the flattened vector of vectors
+    v_flat = collect(1.0:9.0)
+
+    # Define the desired shapes as a vector of tuples
+    shapes = [(3,) for _ in 1:3]
+
+    # Call the unflatten_v function with the specified inputs
+    #unflattened_vectors = unflatten_v(v_flat, shapes)
+    unflattened_vectors = unflatten_to_vec_of_vecs(v_flat, 3)
+
+    # Print the unflattened_vectors
+    println("Unflattened vectors:")
+    println(unflattened_vectors)
   
 
     # mutable struct MyStruct
@@ -98,10 +182,10 @@ begin
     # p.age = 39
     # p.height = 1.8
     #m = [2.32 4.0 0; 0 2.32 0; 0 0 4]
-    r_cables = vcat([-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0])
-    r_cables = convert.(Float32, r_cables)
+    # r_cables = vcat([-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0])
+    # r_cables = convert.(Float32, r_cables)
 
-    print(r_cables)
+    # print(r_cables)
     
     
     # t = [Vector{Float64}(undef, 3) for i in 1:4] #Vector{Float64}(undef, 10)

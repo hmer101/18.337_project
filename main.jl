@@ -16,8 +16,8 @@ begin
     const NUM_DRONES = 3 
 end
 
-# Function that returns function to give num_drones drone inputs (forces and moments) at a specified time
-# Currently set values at quasi-static state-regulation inputs. TODO: might need to change to include horizonal components 
+# Function that returns num_drones drone inputs (forces and moments) at a specified time
+# Currently set values close to quasi-static state-regulation inputs. TODO: might need to change to include horizonal components 
 # TODO: Perhaps try trajectory-following
 function drone_forces_and_moments(params, t::Float64)
     # Preallocate the output vector
@@ -31,6 +31,91 @@ function drone_forces_and_moments(params, t::Float64)
 
     return fₘ
 end
+
+
+# Function that returns num_drones drone inputs (forces and moments) at a specified time
+# The forces, moments and tensions are calculated based on the current drone/load arrangement to give quasi-static behaviour 
+# i.e. no accelerations (linear or angular) of drones or load
+# function drone_forces_and_moments_quasi_static(params, t::Float64)
+#     # Preallocate the output vector
+#     fₘ = [[0.0, Vector{Float64}(undef, 3)] for i in 1:params.num_drones]
+    
+#     # Store the force and moment inputs for each drone
+#     for i in 1:params.num_drones
+#         fₘ[i][1] = (params.m_drones[i]+params.m_cables[i])*params.g + params.m_load/params.num_drones # Force
+#         fₘ[i][2] = [0.0, 0.0, 0.0] # Moment
+#     end
+
+
+#     # Load EOM
+#     # Acceleration
+#     ∑RₗTᵢqᵢ = -p.m_load*p.g*e₃
+
+#     # Angular acceleration
+#     #0 = inv(p.j_load)*(∑rᵢx-Tᵢqᵢ - cross(Ωₗ,(p.j_load*Ωₗ)))
+
+
+#     # Drones EOM
+#     # Acceleration
+#     0 = (fᵢ*Rᵢ*e₃ - p.m_drones[i]*p.g*e₃ + Rₗ*Tᵢqᵢ)
+
+
+
+#     return fₘ
+# end
+
+
+# Function that returns num_drones tension vectors for the massless cable case
+function cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
+    e₃ = [0,0,1] 
+
+    # Create matricies required for Euler-Newton tension calculations
+    # ϕ is I's and hat mapped r's for transforming wrench to tensions
+    # N is the kernal of ϕ
+    ϕ = [Matrix{Float64}(I, params.num_drones, params.num_drones) for _ in 1:2, _ in 1:params.num_drones] # 2xn matrix of I matricies #Matrix{Float64}(undef, 2*params.num_drones, 3*params.num_drones)
+    #num_N_rows = 3*params.num_drones
+    N = [zeros(params.num_drones) for _ in 1:params.num_drones, _ in 1:params.num_drones] #nxn matrix of vectors #Matrix{Float64}(undef, num_N_rows, params.num_drones)
+    n_col = 1
+
+    # Loop through all cable attachment points
+    for i in 1:params.num_drones
+        # Generate ϕ column by column
+        ϕ[2,i] = hat_map(params.r_cables[i])
+
+        # Generate N column by column
+        for j in i:params.num_drones #i is cols, j is rows
+            if i != j
+                # Unit vector from ith cable's attachement point to jth cable's attachment point
+                r₍j_rel_i₎ = params.r_cables[j] - params.r_cables[i]
+                u₍ij₎ = r₍j_rel_i₎/norm(r₍j_rel_i₎)
+                
+                # Generate next N column using unit vectors between cable attachment points on load
+                N_next_col = [zeros(3) for _ in 1:params.num_drones]
+                println(N_next_col)
+                println(u₍ij₎)
+
+                N_next_col[i] = u₍ij₎
+                N_next_col[j] = -u₍ij₎
+                N[:,n_col] = N_next_col
+
+                n_col +=1
+            end
+        end
+    end
+
+    # Wrench calculations
+    W = -(vcat(transpose(Rₗ)*(params.m_load*(ẍₗ + params.g*e₃)), (params.j_load*αₗ + cross(Ωₗ, params.j_load*Ωₗ))))
+
+    # Internal force components (defined here to produce zero isometric work)
+    Λ = zeros(params.num_drones)
+    
+    # Calculate T's
+    T = unflatten_v(pinv(flatten_m(ϕ))*W + flatten_m(N)*Λ, 3)
+    # T = unflatten_v(T, 3) #[(params.num_drones,) for _ in 1:params.num_drones])
+  
+    return T
+end
+
 
 
 # u = x = []
@@ -58,46 +143,35 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
 
     # Calculate cumulative effect of cables on load
     for i in 1:p.num_drones
-        #Tᵢ_drone = u[4*p.num_drones + 4 + i]
+        Tᵢ_drone = u[4*p.num_drones + 4 + i]
+        Tᵢ_load = u[5*p.num_drones + 4 + i]
 
-        # Use neural network or massless assumption
-        if p.use_nn == true
-            Tᵢ_load = u[5*p.num_drones + 4 + i]
-
-            # Sum across all cables needed for load EOM calculations
-            # ∑RₗTᵢ_load -= Rₗ*Tᵢ_load # Forces
-            # ∑rᵢxTᵢ_load += cross(p.r_cables[i],-Tᵢ_load) # Moments
-
-            ∑RₗTᵢ_load += Rₗ*Tᵢ_load # Forces (Note removed -ve from '-=' as want nn predicting vector Tᵢ_load from load to drone)
-            ∑rᵢxTᵢ_load += cross(p.r_cables[i],Tᵢ_load) # Moments (Note removed -ve from '-Tᵢ_load' as want nn predicting vector Tᵢ_load from load to drone)
-
-        else
-            Tᵢ_drone = u[4*p.num_drones + 4 + i]
-            Tᵢ_load = u[5*p.num_drones + 4 + i]
-
+        # Use massless assumption
+        if p.use_nn == false
             # Check massless cables, quasi-static assumption - tension vectors on drone and load are equal and opposite
-            if !are_opposite_directions(v1::Vector, v2::Vector)
+            if !are_opposite_directions(Tᵢ_drone, Tᵢ_load)
                 error("Tension vectors do not meet massless cable assumption")
-
-            # HEREEE
-            #x_Dᵢ_rel_Lᵢ = inv(Rₗ)*(xᵢ - xₗ) - p.r_cables[i] # = -qᵢ
-
-            qᵢ = -inv(Rₗ)*(xᵢ - xₗ) - p.r_cables[i]
-
-            # Sum across all cables needed for load EOM calculations
-            ∑RₗTᵢ_load -= Rₗ*Tᵢ_load # Forces
-            ∑rᵢxTᵢ_load += cross(p.r_cables[i],-Tᵢ_load) # Moments
+            end
 
         end
 
+        # Sum across all cables needed for load EOM calculations
+        ∑RₗTᵢ_load += Rₗ*Tᵢ_load # Forces
+        ∑rᵢxTᵢ_load += cross(p.r_cables[i],-Tᵢ_load) # Moments
+
     end
+    # HEREEE
+        #x_Dᵢ_rel_Lᵢ = inv(Rₗ)*(xᵢ - xₗ) - p.r_cables[i] # = -qᵢ
+        qᵢ = -inv(Rₗ)*(xᵢ - xₗ) - p.r_cables[i]
+
+
 
     # Load EOM
     # Velocity
     du[1+4*p.num_drones] = ẋₗ
 
     # Acceleration
-    ẍₗ = (1/p.m_load)*(∑RₗTᵢ_load -p.m_load*p.g*e₃)
+    ẍₗ = (1/p.m_load)*(-∑RₗTᵢ_load-p.m_load*p.g*e₃)
     du[2+4*p.num_drones] = ẍₗ
 
     # Angular velocity
@@ -134,7 +208,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
         du[i] = ẋᵢ
 
         # Acceleration
-        ẍᵢ = (1/p.m_drones[i])*(fᵢ*Rᵢ*e₃ - p.m_drones[i]*p.g*e₃ + Tᵢ_drone) #ORIENTATION NOT DEFINED BY R_L??? R_L*T_i_drone)
+        ẍᵢ = (1/p.m_drones[i])*(fᵢ*Rᵢ*e₃ - p.m_drones[i]*p.g*e₃ + Tᵢ_drone) #ORIENTATION NOT DEFINED BY R_L??? R_L*T_i_drone). Should the e₃ after fᵢ*Rᵢ be there???
         du[i+p.num_drones] = ẍᵢ
 
         # Angular velocity
@@ -149,7 +223,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
 
 
 
-        # HEREREEEEE - Make so can swap out for masless case for generating training data
+        # HEREREEEEE - Make so can swap out for massless case for generating training data
 
 
 
@@ -157,7 +231,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
         ẋ_Dᵢ_rel_Lᵢ = ẋᵢ - (ẋₗ + cross(Ωₗ,p.r_cables[i]))
 
         ẍ_Lᵢ = ẍₗ + cross(αₗ, p.r_cables[i]) + cross(Ωₗ, cross(Ωₗ, p.r_cables[i])) # Acceleration of point on load where cable is attached
-        ẍ_Dᵢ_rel_Lᵢ = ẍᵢ - ẍ_Lᵢ - cross(αₗ, x_Dᵢ_rel_Lᵢ) - cross(Ωₗ,cross(Ωₗ,x_Dᵢ_rel_Lᵢ)) - 2*cross(Ωₗ,ẋ_Dᵢ_rel_Lᵢ)
+        ẍ_Dᵢ_rel_Lᵢ = ẍᵢ - ẍ_Lᵢ - cross(αₗ, x_Dᵢ_rel_Lᵢ) - cross(Ωₗ, cross(Ωₗ,x_Dᵢ_rel_Lᵢ)) - 2*cross(Ωₗ,ẋ_Dᵢ_rel_Lᵢ)
         
         # Drone side
         nn_ip = vcat(x_Dᵢ_rel_Lᵢ, ẋ_Dᵢ_rel_Lᵢ, ẍ_Dᵢ_rel_Lᵢ)
@@ -171,23 +245,6 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
     end
 
 end
-
-## STEP 1 - solve the ODE forwards
-# Solve neural ODE
-# function solve_nn_ode_fwd(nn_ode, u0, t_span)
-#     # Define neural ODE
-#     # Potential alternative?: NeuralODE(nn, tspan, Tsit5(), saveat = 0.1, reltol = 1e-3, abstol = 1e-3)
-#     function ode_f!(du,u,p,t)
-#         nn = p[1]
-#         du .= nn(u)
-#     end
-
-#     prob = ODEProblem(ode_f!, u0, t_span, [nn_ode])
-#     sol = solve(prob, Tsit5(), abstol = 1e-12, reltol = 1e-12)
-
-#     return sol
-# end
-
 
 
 begin
@@ -248,15 +305,23 @@ end
 begin
     # TEST!!!!!!!!!
     ## Solve
-    du = [Vector{Float64}(undef, 3) for i in 1:(6*NUM_DRONES+4)]
-    t = 1.0
-    # print(typeof(du))
-    # print(typeof(u0))
-    #println(u0)
+    # du = [Vector{Float64}(undef, 3) for i in 1:(6*NUM_DRONES+4)]
+    # t = 1.0
+    # # print(typeof(du))
+    # # print(typeof(u0))
+    # #println(u0)
 
-    ode_sys_drone_swarm_nn!(du,u0,params,t)
+    # ode_sys_drone_swarm_nn!(du,u0,params,t)
 
-    print(du)
+    # print(du)
+
+    ẍₗ = [1, 1, 1]
+    Ωₗ = [2, 2, 2]
+    αₗ = [3, 3, 3]
+    Rₗ = RotZYX(0.1, 0.1, 0.1) 
+
+    T = cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
+    print(T)
 
     # # Example parameter
     # a = 0.5

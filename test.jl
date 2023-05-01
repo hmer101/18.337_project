@@ -73,7 +73,9 @@ begin
 
     # vector_a = [1, 2, 3]
     # vector_b = [4, 5, 6]
-    # #v = ones(4)
+    v = ones(4)
+    print(length(v))
+
     # print(cross(vector_a,vector_b))
     # print(hat_map(vector_a)*vector_b)
 
@@ -152,19 +154,19 @@ begin
     # println(v)
     #println("Star product: ", vector_a*vector_b)
 
-    # Define the flattened vector of vectors
-    v_flat = collect(1.0:9.0)
+    # # Define the flattened vector of vectors
+    # v_flat = collect(1.0:9.0)
 
-    # Define the desired shapes as a vector of tuples
-    shapes = [(3,) for _ in 1:3]
+    # # Define the desired shapes as a vector of tuples
+    # shapes = [(3,) for _ in 1:3]
 
-    # Call the unflatten_v function with the specified inputs
-    #unflattened_vectors = unflatten_v(v_flat, shapes)
-    unflattened_vectors = unflatten_to_vec_of_vecs(v_flat, 3)
+    # # Call the unflatten_v function with the specified inputs
+    # #unflattened_vectors = unflatten_v(v_flat, shapes)
+    # unflattened_vectors = unflatten_to_vec_of_vecs(v_flat, 3)
 
-    # Print the unflattened_vectors
-    println("Unflattened vectors:")
-    println(unflattened_vectors)
+    # # Print the unflattened_vectors
+    # println("Unflattened vectors:")
+    # println(unflattened_vectors)
   
 
     # mutable struct MyStruct

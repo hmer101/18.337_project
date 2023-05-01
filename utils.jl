@@ -2,7 +2,11 @@
 # 
 # Author: Harvey Merton
 
+#####
+# Vector and matrix conversion helper functions
+#####
 
+## Flattening and unflattening matricies and vectors
 # Flattens vector of vectors
 function flatten_v(v)
     n = 0 # v_flat index
@@ -115,7 +119,9 @@ function unflatten_m(M_flat, nrows, ncols, row_size, col_size, is_matrix::Bool)
     return M
 end
 
-
+#####
+## Kinematics and vector geometry helper functions
+#####
 
 # Checks if two vectors are the same but pointing in opposite directions
 function are_opposite_directions(v1::Vector, v2::Vector)
@@ -138,3 +144,41 @@ function hat_map(v::Vector)
          -v[2]  v[1]   0  ]
     return V
 end
+
+
+# Convert RPY Euler angles to a rotation matrix R
+function rpy_to_R(rpy::Vector{T}) where T
+    # Check that the input vector is of size 3 (i.e. contains RPY)
+    if length(rpy) != 3
+        throw(ArgumentError("The input vector must have exactly 3 elements"))
+    end
+    
+    # Convert the RPY Euler angles to a rotation matrix R
+    return RotZYX(rpy[1], rpy[2], rpy[3])
+    
+end
+
+# Convert a rotation matrix R to RPY Euler angles
+function rpy_to_R(R::Matrix{T}) where T
+    # Check that the input matrix is of size 3x3. Could do further checks to see if is special orthogonal
+    if size(R) != (3, 3)
+        throw(ArgumentError("The input matrix must be of size 3x3"))
+    end
+    
+    # Convert the RPY Euler angles to a rotation matrix R
+    return Rotations.params(RotZYX(R))
+    
+end
+
+
+#####
+# Results visualization
+#####
+function plot_tension_data(t_data::Vector{Float64}, T_data::, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎)
+
+end
+
+
+# Visualization of the test
+    plot(sol_fit, label = ["Fit: u1(t)" "Fit: u2(t)"])
+    plot!(t_data, [(i->data[i][1]).(1:length(data)) (i->data[i][2]).(1:length(data))], seriestype = :scatter, legend = :topleft, label = ["Data: d1" "Data: d2"], xlabel = "Time", ylabel = "Solution")

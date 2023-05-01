@@ -33,40 +33,9 @@ function drone_forces_and_moments(params, t::Float64)
 end
 
 
-# Function that returns num_drones drone inputs (forces and moments) at a specified time
-# The forces, moments and tensions are calculated based on the current drone/load arrangement to give quasi-static behaviour 
-# i.e. no accelerations (linear or angular) of drones or load
-# function drone_forces_and_moments_quasi_static(params, t::Float64)
-#     # Preallocate the output vector
-#     fₘ = [[0.0, Vector{Float64}(undef, 3)] for i in 1:params.num_drones]
-    
-#     # Store the force and moment inputs for each drone
-#     for i in 1:params.num_drones
-#         fₘ[i][1] = (params.m_drones[i]+params.m_cables[i])*params.g + params.m_load/params.num_drones # Force
-#         fₘ[i][2] = [0.0, 0.0, 0.0] # Moment
-#     end
-
-
-#     # Load EOM
-#     # Acceleration
-#     ∑RₗTᵢqᵢ = -p.m_load*p.g*e₃
-
-#     # Angular acceleration
-#     #0 = inv(p.j_load)*(∑rᵢx-Tᵢqᵢ - cross(Ωₗ,(p.j_load*Ωₗ)))
-
-
-#     # Drones EOM
-#     # Acceleration
-#     0 = (fᵢ*Rᵢ*e₃ - p.m_drones[i]*p.g*e₃ + Rₗ*Tᵢqᵢ)
-
-
-
-#     return fₘ
-# end
-
-
 # Function that returns num_drones tension vectors for the massless cable case
-function cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
+# TODO: Can this work for non-massless case?
+function cable_tensions_massless_cable(ẍₗ, Ωₗ, αₗ, Rₗ, params)
     e₃ = [0,0,1] 
 
     # Create matricies required for Euler-Newton tension calculations
@@ -91,8 +60,6 @@ function cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
                 
                 # Generate next N column using unit vectors between cable attachment points on load
                 N_next_col = [zeros(3) for _ in 1:params.num_drones]
-                println(N_next_col)
-                println(u₍ij₎)
 
                 N_next_col[i] = u₍ij₎
                 N_next_col[j] = -u₍ij₎
@@ -109,13 +76,109 @@ function cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
     # Internal force components (defined here to produce zero isometric work)
     Λ = zeros(params.num_drones)
     
-    # Calculate T's
+    # Calculate T's - returns as a vector of tension 3-vectors
     T = unflatten_v(pinv(flatten_m(ϕ))*W + flatten_m(N)*Λ, 3)
-    # T = unflatten_v(T, 3) #[(params.num_drones,) for _ in 1:params.num_drones])
+    #T = -T # To change vector direction so pointing from load to drone
   
     return T
 end
 
+
+# Generate training data using differential flatness and 
+function generate_tension_training_data(t_step, params)
+    # Use a circlular trajectory for the load with constant scalar velocity at walking pace 1.2 m/s
+    # Will change with selected load trajectory
+    v_target = 1.2
+    r_scalar = 2.0 # Radius of circular trajectory
+    r₍L_rel_orig₎ = [r_scalar, 0.0, 0.0]
+
+    ω_scalar = v_target/r_scalar
+    ω = [0.0, 0.0, ω_scalar]
+
+    # Set time to capture 1 full rotation
+    T = 2*t_step #2*π/ω_scalar
+    t_data = 0.0:t_step:T
+
+    ## Generate the circular load trajectory
+    # Preallocate arrays - #TODO: some of these don't have to be stored (or could be passed in to load traj gen function)
+    xₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+    ẋₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+    ẍₗ =  [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+
+    θₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+    Ωₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+    αₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+
+    x₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẋ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẍ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    T = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+
+    xᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones] # Could initialise at starting values so to not have wild derivatives at start
+    ẋᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones] # Will have wild 1st derivative for 1st step and wild second for first 2 steps with 0 ICs
+
+    # Use a rotating co-ordinate system that rotates with ω
+    θₜ = 0
+
+    # Loops are just as fast as vectorisation in Julia
+    for (ind, t) in enumerate(t_data)
+        
+        # Set position and derivatives - will change with selected load trajectory
+        xₗ[ind] = [r_scalar*sin(θₜ), r_scalar*cos(θₜ), 0.0]
+        ẋₗ[ind] = cross(ω, r₍L_rel_orig₎)
+        ẍₗ[ind] = cross(ω, cross(ω, r₍L_rel_orig₎))
+
+        # Set angular velocity and derivatives - will change with selected load trajectory
+        θₗ[ind] = [0.0, 0.0, 0.0]
+        Ωₗ[ind] = [0.0, 0.0, 0.0]
+        αₗ[ind] = [0.0, 0.0, 0.0]
+
+        Rₗ = rpy_to_R(θₗ[ind])
+        T₍ind₎ = cable_tensions_massless_cable(ẍₗ[ind], Ωₗ[ind], αₗ[ind], Rₗ, params)
+        T[ind] = T₍ind₎
+
+        ## Calculate drone positions (and derivatives) relative to load attachment point
+        for i in 1:params.num_drones
+            ## Drone relative to world
+            # Position
+            qᵢ = T₍ind₎[i]/norm(T₍ind₎[i])
+            Lᵢqᵢ = params.l_cables[i]*qᵢ 
+
+            xᵢ = xₗ[ind] + Rₗ*(params.r_cables[i]-Lᵢqᵢ)
+            
+            # Velocity (use backwards finite difference)
+            ẋᵢ = (xᵢ-xᵢ_prev[i])/t_step
+
+
+            # Acceleration (use second order backwards finite difference)
+            ẍᵢ = (ẋᵢ-ẋᵢ_prev[i])/t_step
+            
+            ## Drone relative to attachment point
+            # Position
+            r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
+            x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
+            
+            # Velocity
+            ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
+
+            # Acceleration
+            ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
+            ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
+
+            ## Update values for backwards finite difference
+            xᵢ_prev[i] = xᵢ
+            ẋᵢ_prev[i] = ẋᵢ
+
+        end
+
+        # Update load position
+        θₜ = θₜ + t_step*ω_scalar
+
+    end
+
+    return t_data, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎
+
+end
 
 
 # u = x = []
@@ -134,7 +197,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
     θₗ = u[p.num_drones*4+3]
     Ωₗ = u[p.num_drones*4+4]
 
-    Rₗ = RotZYX(θₗ[1], θₗ[2], θₗ[3]) # RPY angles to rotation matrix. Use Rotations.params(RotZYX(R)) to go other way
+    Rₗ = rpy_to_R([θₗ[1], θₗ[2], θₗ[3]]) # RPY angles to rotation matrix
 
     ## Equations of motion
     ## Load
@@ -191,7 +254,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
         θᵢ = u[2*p.num_drones+i]
         Ωᵢ = u[3*p.num_drones+i] # Same as θ̇ᵢ
 
-        Rᵢ = RotZYX(θᵢ[1], θᵢ[2], θᵢ[3]) # RPY angles to rotation matrix. Use Rotations.params(RotZYX(R)) to go other way
+        Rᵢ = rpy_to_R([θᵢ[1], θᵢ[2], θᵢ[3]]) # RPY angles to rotation matrix. 
 
         # Connections (after drone and load in u)
         Tᵢ_drone = u[4*p.num_drones + 4 + i]
@@ -296,7 +359,7 @@ begin
     # Initialise parameter struct
     j_drone = [2.32 0 0; 0 2.32 0; 0 0 4]
 
-    params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], 
+    params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
                                     r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], T_dot_drone_nn=nn_T_dot_drone, T_dot_load_nn=nn_T_dot_load)
 
@@ -318,10 +381,19 @@ begin
     ẍₗ = [1, 1, 1]
     Ωₗ = [2, 2, 2]
     αₗ = [3, 3, 3]
-    Rₗ = RotZYX(0.1, 0.1, 0.1) 
+    #print(length(αₗ))
+    Rₗ = rpy_to_R([0.1, 0.1, 0.1]) 
 
-    T = cable_tensions_load_side(ẍₗ, Ωₗ, αₗ, Rₗ, params)
-    print(T)
+    #T = cable_tensions_massless_cable(ẍₗ, Ωₗ, αₗ, Rₗ, params)
+    #print(T)
+
+    t_data, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎ = generate_tension_training_data(0.1, params)
+    
+
+    # HEREEEEEE
+    # Plot (Don't believe ẍ₍i_rel_Lᵢ₎ yet)
+
+
 
     # # Example parameter
     # a = 0.5

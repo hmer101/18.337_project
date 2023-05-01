@@ -8,6 +8,9 @@ begin
    using Rotations
    using LinearAlgebra
    using Flux
+   using Plots
+   using Plots.PlotMeasures
+   using Printf
    include("utils.jl")
    include("datatypes.jl")
 end
@@ -103,7 +106,7 @@ function generate_tension_training_data(t_step, params)
     # Preallocate arrays - #TODO: some of these don't have to be stored (or could be passed in to load traj gen function)
     xₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     ẋₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
-    ẍₗ =  [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
+    ẍₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
 
     θₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     Ωₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
@@ -388,7 +391,11 @@ begin
     #print(T)
 
     t_data, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎ = generate_tension_training_data(0.1, params)
-    
+    plot_results(t_data, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎, false)
+
+
+
+    #plot_tension_data(t_data, T, true)
 
     # HEREEEEEE
     # Plot (Don't believe ẍ₍i_rel_Lᵢ₎ yet)

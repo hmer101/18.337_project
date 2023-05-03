@@ -44,7 +44,7 @@ end
 # TODO: replace all du= with du.=
 function ode_sys_drone_swarm_nn!(du,u,p,t)
     # Get force and moment inputs from drones
-    fₘ = drone_forces_and_moments(p, t)
+    fₘ = drone_forces_and_moments(p, t)      # TODO: FIX THIS -> how coming through in training data???
 
     ## Variable unpacking 
     e₃ = [0,0,1] 
@@ -57,6 +57,21 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
 
     Rₗ = rpy_to_R([θₗ[1], θₗ[2], θₗ[3]]) # RPY angles to rotation matrix
 
+
+
+    ## Drone relative to attachment point
+    # Position
+    # r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
+    # x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
+    
+    # # Velocity
+    # ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ[ind][i] - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
+
+    # # Acceleration
+    # ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
+    # ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ[ind][i] - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
+
+
     ## Equations of motion
     ## Load
     ∑RₗTᵢ_load = zeros(3)
@@ -64,7 +79,7 @@ function ode_sys_drone_swarm_nn!(du,u,p,t)
 
     # Calculate cumulative effect of cables on load
     for i in 1:p.num_drones
-        Tᵢ_drone = u[4*p.num_drones + 4 + i]
+        Tᵢ_drone = u[4*p.num_drones + 4 + i]   # TODO: Note this Ti_load = -Ti_drone relationship will not hold without assumption
         Tᵢ_load = u[5*p.num_drones + 4 + i]
 
         # Use massless assumption
@@ -380,7 +395,7 @@ begin
     # Angular velocity
     u0[4+4*NUM_DRONES] = 100*ones(3)
 
-    
+
     ## Setup parameters
     # Cable tension NNs - take in flattened vector inputs, output tension vector at drone and load respectively
     input_dim = 9 # Position, velocity and acceleration vectors for each drone relative to the attachment point of their attached cables on the load

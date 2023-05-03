@@ -192,16 +192,49 @@ function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plo
 
         if plot_components
             # Plot components for all time points
-            plot!(plot_var, t_data, [comp1, comp2, comp3], xlims=x_domain, seriestype = :scatter, legend = :topleft, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
+            plot!(plot_var, t_data, [comp1, comp2, comp3], xlims=x_domain, seriestype = :scatter, legend = :topright, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
         else
             # Plot magnitude for all time points
-            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = :scatter, legend = :topleft, label = "$label_prefix$drone_ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
+            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = :scatter, legend = :topright, label = "$label_prefix$drone_ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
         end
 
     end
 
     return plot_var
 
+end
+
+# Plot data generated for training the NN
+function plot_load_trajectory(t_data, xₗ::Vector{Vector{Float64}}, ẋₗ::Vector{Vector{Float64}}, ẍₗ::Vector{Vector{Float64}})
+    x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
+    
+    # Repackage load data to work with plot function
+    xₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+    ẋₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+    ẍₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+
+    for i in 1:length(t_data)
+        xₗ_new[i] = [xₗ[i]]
+        ẋₗ_new[i] = [ẋₗ[i]]
+        ẍₗ_new[i] = [ẍₗ[i]]
+    end
+
+    ## Plot load trajectory data
+    # Position
+    p_x = plot()
+    plot_data!(p_x, t_data, xₗ_new, true, x_domain, "xₗ","Location (m)")
+
+    # Velocity
+    p_ẋ = plot()
+    plot_data!(p_ẋ, t_data, ẋₗ_new, true, x_domain, "ẋₗ","Velocity (m/s)")
+
+    # Acceleration
+    p_ẍ = plot()
+    plot_data!(p_ẍ, t_data, ẍₗ_new, true, x_domain, "ẍₗ","Acceleration (m/s²)")
+    
+    ## Display load trajectory
+    p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600))
+    display(p_traj)
 end
 
 # Plot data generated for training the NN

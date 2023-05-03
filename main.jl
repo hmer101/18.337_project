@@ -361,25 +361,26 @@ begin
 
         ## Cables
         # Drone side
-        u0[4*NUM_DRONES + 4 + i] = i*ones(3)
+        #u0[4*NUM_DRONES + 4 + i] = i*ones(3)
 
         # Load side
-        u0[5*NUM_DRONES + 4 + i] = i*ones(3)
+        #u0[5*NUM_DRONES + 4 + i] = i*ones(3)
 
     end
     # Load ICs
-    # Velocity
+    # Position
     u0[1+4*NUM_DRONES] = 100*ones(3)
 
-    # Acceleration
+    # Velocity
     u0[2+4*NUM_DRONES] = 100*ones(3)
 
-    # Angular velocity
+    # Orientation
     u0[3+4*NUM_DRONES] = 100*ones(3)
 
-    # Angular acceleration
+    # Angular velocity
     u0[4+4*NUM_DRONES] = 100*ones(3)
 
+    
     ## Setup parameters
     # Cable tension NNs - take in flattened vector inputs, output tension vector at drone and load respectively
     input_dim = 9 # Position, velocity and acceleration vectors for each drone relative to the attachment point of their attached cables on the load

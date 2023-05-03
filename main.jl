@@ -234,6 +234,16 @@ function generate_tension_training_data(t_step, params)
 
     ## Generate the circular load trajectory
     # Preallocate arrays
+    # Drones
+    xᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẋᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẍᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)]
+
+    θᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    Ωᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    αᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)]
+
+    # Load
     xₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     ẋₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     ẍₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
@@ -242,13 +252,17 @@ function generate_tension_training_data(t_step, params)
     Ωₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     αₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
 
-    x₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
-    ẋ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
-    ẍ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    # Drone relative to load
+    # x₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    # ẋ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    # ẍ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
     T = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
 
+    # Cache previous values for FD calculations
     xᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones] # Could initialise at starting values so to not have wild derivatives at start
     ẋᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones] # Will have wild 1st derivative for 1st step and wild second for first 2 steps with 0 ICs
+    θᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones]
+    Ωᵢ_prev = [[0.0, 0.0, 0.0] for _ in 1:params.num_drones]
 
     # Use a rotating co-ordinate system that rotates with ω
     θₜ = 0
@@ -277,29 +291,40 @@ function generate_tension_training_data(t_step, params)
             qᵢ = T₍ind₎[i]/norm(T₍ind₎[i])
             Lᵢqᵢ = params.l_cables[i]*qᵢ 
 
-            xᵢ = xₗ[ind] + Rₗ*(params.r_cables[i]-Lᵢqᵢ)
+            xᵢ[ind][i] = xₗ[ind] + Rₗ*(params.r_cables[i]-Lᵢqᵢ)
             
             # Velocity (use backwards finite difference)
-            ẋᵢ = (xᵢ-xᵢ_prev[i])/t_step
+            ẋᵢ[ind][i] = (xᵢ[ind][i]-xᵢ_prev[i])/t_step
 
             # Acceleration (use second order backwards finite difference)
-            ẍᵢ = (ẋᵢ-ẋᵢ_prev[i])/t_step
+            ẍᵢ[ind][i] = (ẋᵢ[ind][i]-ẋᵢ_prev[i])/t_step
             
+            # Orientation (will change with different trajectories)
+            θᵢ[ind][i] = [0.0, 0.0, 0.0]
+
+            # Angular velocity 
+            Ωᵢ[ind][i] = (θᵢ[ind][i] - θᵢ_prev[i])/t_step
+
+            # Angular acceleration
+            αᵢ[ind][i] = (Ωᵢ[ind][i] - Ωᵢ_prev[i])/t_step
+
             ## Drone relative to attachment point
             # Position
-            r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
-            x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
+            # r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
+            # x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
             
-            # Velocity
-            ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
+            # # Velocity
+            # ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ[ind][i] - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
 
-            # Acceleration
-            ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
-            ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
+            # # Acceleration
+            # ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
+            # ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ[ind][i] - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
 
             ## Update values for backwards finite difference
-            xᵢ_prev[i] = xᵢ
-            ẋᵢ_prev[i] = ẋᵢ
+            xᵢ_prev[i] = xᵢ[ind][i]
+            ẋᵢ_prev[i] = ẋᵢ[ind][i]
+            θᵢ_prev[i] = θᵢ[ind][i]
+            Ωᵢ_prev[i] = Ωᵢ[ind][i]
 
         end
 
@@ -308,8 +333,8 @@ function generate_tension_training_data(t_step, params)
 
     end
 
-    # Return time vector, tension data, load trajectory and drone motion relative to cable attachment points on load
-    return t_data, T, xₗ, ẋₗ, ẍₗ, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎
+    # Return time vector, tension data, load trajectory and drone motion                   # OLD: relative to cable attachment points on load
+    return t_data, xᵢ, ẋᵢ, ẍᵢ, θᵢ, Ωᵢ, αᵢ, xₗ, ẋₗ, ẍₗ, θₗ, Ωₗ, αₗ  #T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎
 
 end
 
@@ -382,24 +407,33 @@ begin
     # ode_sys_drone_swarm_nn!(du,u0,params,t)
 
     ## Generate training data
-    t_data, T, xₗ, ẋₗ, ẍₗ, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎ = generate_tension_training_data(0.1, params)
+    t_data, xᵢ, ẋᵢ, ẍᵢ, θᵢ, Ωᵢ, αᵢ, xₗ, ẋₗ, ẍₗ, θₗ, Ωₗ, αₗ = generate_tension_training_data(0.1, params)
 
-    # Display trajectory
-    #plot_load_trajectory(t_data, xₗ, ẋₗ, ẍₗ)
+
+    # Display trajectory - load
+    # plot_trajectory(t_data, xₗ, ẋₗ, ẍₗ, true, false)
+    # plot_trajectory(t_data, θₗ, Ωₗ, αₗ, true, true)
+
+    # Display trajectory - drone
+    plot_trajectory(t_data[3:end], xᵢ[3:end], ẋᵢ[3:end], ẍᵢ[3:end], false, false)
+    plot_trajectory(t_data, θᵢ[3:end], Ωᵢ[3:end], αᵢ[3:end], false, true)
+
+
 
     # Display training tension and drone relative to load connection points 
     #plot_results(t_data, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎, true)
 
     ## Define the neural ODE and solve
     #t_data[1], t_data[end]
-    nn_T_dot_drone_test = Chain(Dense(3, 32, tanh), Dense(32, 3)) #Chain(Dense(9, 32, tanh), Dense(32, 3))
-    T_drone_n_ode = NeuralODE(nn_T_dot_drone_test, (Float32(t_data[1]), Float32(t_data[end])), Tsit5(), saveat = 0.1, reltol=1e-7, abstol=1e-9) #(0.0f0, 1.0f0)
 
-    u0 = Float32[T[1][1][1], T[1][1][2], T[1][1][3]] #0.0, 0.0, 0.0] #0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    pred = T_drone_n_ode(u0) # Get the prediction using the correct initial condition
+    # nn_T_dot_drone_test = Chain(Dense(3, 32, tanh), Dense(32, 3)) #Chain(Dense(9, 32, tanh), Dense(32, 3))
+    # T_drone_n_ode = NeuralODE(nn_T_dot_drone_test, (Float32(t_data[1]), Float32(t_data[end])), Tsit5(), saveat = 0.1, reltol=1e-7, abstol=1e-9) #(0.0f0, 1.0f0)
 
-    scatter(t_data,T[1,:],label="data")
-    scatter(t_data,pred[1,:],label="prediction")
+    # u0 = Float32[T[1][1][1], T[1][1][2], T[1][1][3]] #0.0, 0.0, 0.0] #0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # pred = T_drone_n_ode(u0) # Get the prediction using the correct initial condition
+
+    # scatter(t_data,T[1,:],label="data")
+    # scatter(t_data,pred[1,:],label="prediction")
 
 
     ## Train

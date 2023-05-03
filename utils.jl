@@ -204,38 +204,73 @@ function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plo
 
 end
 
-# Plot data generated for training the NN
-function plot_load_trajectory(t_data, xₗ::Vector{Vector{Float64}}, ẋₗ::Vector{Vector{Float64}}, ẍₗ::Vector{Vector{Float64}})
-    x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
-    
-    # Repackage load data to work with plot function
-    xₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
-    ẋₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
-    ẍₗ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
 
-    for i in 1:length(t_data)
-        xₗ_new[i] = [xₗ[i]]
-        ẋₗ_new[i] = [ẋₗ[i]]
-        ẍₗ_new[i] = [ẍₗ[i]]
+# Plot trajectory data generated for training the NN
+function plot_trajectory(t_data, x::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẋ::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẍ::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, is_load::Bool, is_angular::Bool)
+    x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
+    plot_title = "Drone Trajectories"
+    
+    ## Hanle case for load
+    if is_load
+        plot_title = "Load Trajectory"
+
+        # Repackage load data to work with plot function
+        x_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+        ẋ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+        ẍ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+
+        for i in 1:length(t_data)
+            x_new[i] = [x[i]]
+            ẋ_new[i] = [ẋ[i]]
+            ẍ_new[i] = [ẍ[i]]
+        end
+    else
+        x_new = x
+        ẋ_new = ẋ
+        ẍ_new = ẍ
     end
 
-    ## Plot load trajectory data
+    ## Set axes labels
+    y_axis_label = "Location (m)"
+    y_axis_label_dot = "Velocity (m/s)"
+    y_axis_label_ddot = "Acceleration (m/s²)"
+
+    legend_label = "x"
+    legend_label_dot = "ẋ"
+    legend_label_ddot = "ẍ"
+
+    # Handle case for angular data
+    if is_angular
+        y_axis_label = "θ (rad)"
+        y_axis_label_dot = "Ω (rad/s)"
+        y_axis_label_ddot = "α (rad/s²)"
+
+        legend_label = "θ"
+        legend_label_dot = "Ω"
+        legend_label_ddot = "α"
+
+    end
+
+    ## Plot trajectory data
     # Position
     p_x = plot()
-    plot_data!(p_x, t_data, xₗ_new, true, x_domain, "xₗ","Location (m)")
+    plot_data!(p_x, t_data, x_new, true, x_domain, legend_label, y_axis_label)
 
     # Velocity
     p_ẋ = plot()
-    plot_data!(p_ẋ, t_data, ẋₗ_new, true, x_domain, "ẋₗ","Velocity (m/s)")
+    plot_data!(p_ẋ, t_data, ẋ_new, true, x_domain, legend_label_dot, y_axis_label_dot)
 
     # Acceleration
     p_ẍ = plot()
-    plot_data!(p_ẍ, t_data, ẍₗ_new, true, x_domain, "ẍₗ","Acceleration (m/s²)")
+    plot_data!(p_ẍ, t_data, ẍ_new, true, x_domain, legend_label_ddot, y_axis_label_ddot)
     
-    ## Display load trajectory
-    p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600))
+    ## Display trajectory
+    p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600), title=plot_title)
     display(p_traj)
 end
+
+
+
 
 # Plot data generated for training the NN
 function plot_results(t_data, T_data::Vector{Vector{Vector{Float64}}}, x₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, ẋ₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, ẍ₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, plot_components::Bool)

@@ -2,6 +2,11 @@
 # 
 # Author: Harvey Merton
 
+begin
+    using Printf
+end
+
+
 #####
 # Vector and matrix conversion helper functions
 #####

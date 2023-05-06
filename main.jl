@@ -71,6 +71,42 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
     ∑RₗTᵢ_load = zeros(3)
     ∑rᵢxTᵢ_load = zeros(3)
 
+    # Load acceleration estimations
+    temp_t = params.t_prev # TODO: REMOVE
+    println()
+    println("t: $t")
+    println("params.t_prev: $temp_t")
+
+    t_step = t - params.t_prev #0.1 #t - params.t_prev 
+    # println("t_step: $t_step")
+
+    # if t_step == 0.0
+    #     ẍₗ_est = params.ẍₗ_est_prev
+    #     αₗ_est = params.αₗ_est_prev
+
+    #     #error("Step size from cached previous step is 0.0")
+    #     @warn "Step size from cached previous step is 0.0 - using cached estimates for accelerations"
+    #     println("ẍₗ_est: $ẍₗ_est")
+    #     println("αₗ_est: $αₗ_est")
+
+    # else
+    #     ẍₗ_est = (ẋₗ-params.ẋₗ_prev)/t_step
+    #     αₗ_est = (Ωₗ-params.Ωₗ_prev)/t_step
+    # end
+
+    # Rather than using backwards finite difference, simply estimate current acceleration as previous actual acceleration
+    # Backwards finite difference has lag anyway, this just avoids numerical error amplification by small timesteps
+    ẍₗ_est = params.ẍₗ_prev
+    αₗ_est = params.αₗ_prev
+
+    println("ẍₗ_est: $ẍₗ_est")
+    println("αₗ_est: $αₗ_est")
+
+    # ẍₗ_est = [0.0, 0.0, 0.0] 
+    # αₗ_est = [0.0, 0.0, 0.0]
+    # ẍₗ_est = (ẋₗ-params.ẋₗ_prev)/t_step
+    # αₗ_est = (Ωₗ-params.Ωₗ_prev)/t_step
+
     # All drones
     for i in 1:params.num_drones
         ### Variable unpacking
@@ -99,20 +135,35 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         ẋ₍i_rel_Lᵢ₎ = ẋᵢ - (ẋₗ + cross(Ωₗ, params.r_cables[i]))
 
         # Acceleration
-        t_step = t - params.t_prev 
+        # t_step = t - params.t_prev 
+
+        # if t_step == 0.0
+        #     error("Step size from cached previous step is 0.0")
+        # end
+
+        # println()
+        # println("t_step")
+        # println(t_step)
  
         # If t_step=0, assign all estimates =0 to account for starting step (otherwise will get /0 error)
         # TODO: Could simply save these values calc'ed at previous timestep (in params) rather than use FD -> use delayed estimation
-        ẍₗ_est = [0.0, 0.0, 0.0]
-        αₗ_est = [0.0, 0.0, 0.0]
-        ẍᵢ_est = [0.0, 0.0, 0.0]
+        # TODO: Could go back to zero!! Currently trying setting prev velocities based on actual prev velocities before data start
+        # ẍₗ_est = [0.0, 0.0, 0.0] 
+        # αₗ_est = [0.0, 0.0, 0.0]
+        #ẍᵢ_est = [0.0, 0.0, 0.0]
         
         # Otherwise, estimate accelerations with backwards FD to allow cable tensions to be calculate
-        if t_step != 0 
-            ẍₗ_est = (ẋₗ-params.ẋₗ_prev)/t_step
-            αₗ_est = (Ωₗ-params.Ωₗ_prev)/t_step
-            ẍᵢ_est = (ẋᵢ-params.ẋᵢ_prev[i])/t_step
-        end
+
+        # if t_step == 0.0
+        #     # @warn "Also for drone" # TODO: REMOVE!!
+        #     ẍᵢ_est = params.ẍᵢ_est_prev[i]
+        #     # println("αₗ_est: $αₗ_est")
+        # else
+        #     ẍᵢ_est = (ẋᵢ-params.ẋᵢ_prev[i])/t_step
+        # end
+        ẍᵢ_est = params.ẍᵢ_prev[i]
+        println("ẍᵢ_est: $ẍᵢ_est")
+
 
         ẍ₍Lᵢ₎ = ẍₗ_est + cross(αₗ_est, params.r_cables[i]) + cross(Ωₗ, cross(Ωₗ, params.r_cables[i]))
         ẍ₍i_rel_Lᵢ₎ = ẍᵢ_est - ẍ₍Lᵢ₎ - cross(αₗ_est, r₍i_rel_Lᵢ₎) - cross(Ωₗ, cross(Ωₗ,r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ,ẋ₍i_rel_Lᵢ₎)
@@ -139,21 +190,14 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         ### Equations of motion
         ## Drones
         # Velocity
-        # println("du.x[i]")
-        # println(du.x[i])
-
-        # println("ẋᵢ")
-        # println(ẋᵢ)
-        #println(du)
-
-        du.x[i][1:length(du.x[i])] = ẋᵢ
+        du.x[i][1:length(du.x[i])] = ẋᵢ[1:end]
 
         # Acceleration
         ẍᵢ = (1/params.m_drones[i])*(fᵢ*Rᵢ*e₃ - params.m_drones[i]*params.g*e₃ + Rₗ*Tᵢ_drone) # Might not use Rl when not using assumption?????
-        du.x[i+params.num_drones][1:length(du.x[i+params.num_drones])] = ẍᵢ
+        du.x[i+params.num_drones][1:length(du.x[i+params.num_drones])] = ẍᵢ[1:end]
 
         # Angular velocity
-        du.x[i+2*params.num_drones][1:length(du.x[i+2*params.num_drones])] = Ωᵢ
+        du.x[i+2*params.num_drones][1:length(du.x[i+2*params.num_drones])] = Ωᵢ[1:end]
 
         # Angular acceleration
         # αᵢ = inv(p.j_drones[i])*(mᵢ - cross(Ωᵢ,(p.j_drones[i]*Ωᵢ)))
@@ -161,31 +205,34 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         
 
         ### Update cache
-        params.ẋᵢ_prev[i] = ẋᵢ
+        params.ẋᵢ_prev[i][1:end] = ẋᵢ[1:end]
+        params.ẍᵢ_prev[i][1:end] = ẍᵢ[1:end] #_est
 
     end
 
     ## Load EOM
     # Velocity
-    du.x[1+4*params.num_drones][1:length(du.x[1+4*params.num_drones])] = ẋₗ
+    du.x[1+4*params.num_drones][1:length(du.x[1+4*params.num_drones])] = ẋₗ[1:end]
 
     # Acceleration
     ẍₗ = (1/params.m_load)*(-∑RₗTᵢ_load-params.m_load*params.g*e₃)
-    du.x[2+4*params.num_drones][1:length(du.x[2+4*params.num_drones])] = ẍₗ
+    du.x[2+4*params.num_drones][1:length(du.x[2+4*params.num_drones])] = ẍₗ[1:end]
 
     # Angular velocity
-    du.x[3+4*params.num_drones][1:length(du.x[3+4*params.num_drones])] = Ωₗ
+    du.x[3+4*params.num_drones][1:length(du.x[3+4*params.num_drones])] = Ωₗ[1:end]
 
     # Angular acceleration
     αₗ = inv(params.j_load)*(∑rᵢxTᵢ_load - cross(Ωₗ,(params.j_load*Ωₗ)))
-    du.x[4+4*params.num_drones][1:length(du.x[4+4*params.num_drones])] = αₗ
-
-    #du = ArrayPartition[] # RecursiveArrayTools
+    du.x[4+4*params.num_drones][1:length(du.x[4+4*params.num_drones])] = αₗ[1:end]
 
     ### Update cache
-    params.ẋₗ_prev = ẋₗ
-    params.Ωₗ_prev = Ωₗ
     params.t_prev = t
+
+    params.ẋₗ_prev[1:end] = ẋₗ[1:end]
+    params.Ωₗ_prev[1:end] = Ωₗ[1:end]
+    
+    params.ẍₗ_prev[1:end] = ẍₗ[1:end] #_est
+    params.αₗ_prev[1:end] = αₗ[1:end] #_est
 
 end
 
@@ -193,10 +240,15 @@ end
 function loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone)
     # Solve the ODE
     t_span = (t_data[1], t_data[end])  #t_span = (0.0, 1.0)
-    time_save_points = t_span[1]:(t_data[2]-t_data[1]):t_span[2] # Assuming data saved at fixed-distance points
+    time_save_points = t_span[1]:(t_data[2]-t_data[1]):t_span[2] # Assuming data saved at fixed-distance points round(, digits=3)
+
+    # println("t_span: $t_span") # Perhaps rounding errors here
+    # println("time_save_points: $time_save_points")
+
+    #print("drone_swarm_params: $drone_swarm_params")
 
     prob = ODEProblem(drone_swarm_params, u0, t_span, p_nn_T_drone) # Check that step size in ODE is correct. callback=step_size_callback, OR used fixed timestep solve dt=myparameters.dt??
-    sol = solve(prob, Tsit5(), saveat=time_save_points)
+    sol = solve(prob, Tsit5(), saveat=time_save_points, dt=0.01)
     
     # Get loss relative to data
     l = 0
@@ -399,7 +451,7 @@ function generate_tension_training_data(t_step, params)
 end
 
 
-
+# SET UP IC's and PARAMS
 begin
     ## Set initial conditions
     u0_temp = [Vector{Float64}(undef, 3) for i in 1:(6*NUM_DRONES+4)]
@@ -450,10 +502,13 @@ begin
 
     drone_swarm_params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
-                                    r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], re_nn_T_drone=re_nn_T_drone, t_prev=0.1, ẋₗ_prev=u0.x[2+4*NUM_DRONES], Ωₗ_prev=u0.x[4+4*NUM_DRONES], ẋᵢ_prev=collect(u0.x[NUM_DRONES+1:2*NUM_DRONES]))
+                                    r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], re_nn_T_drone=re_nn_T_drone, 
+                                    t_prev=0.0, ẋₗ_prev=u0.x[2+4*NUM_DRONES], Ωₗ_prev=u0.x[4+4*NUM_DRONES], ẋᵢ_prev=collect(u0.x[NUM_DRONES+1:2*NUM_DRONES]), 
+                                    ẍₗ_prev=[0.0, 0.0, 0.0], αₗ_prev=[0.0, 0.0, 0.0], ẍᵢ_prev=Vector{Vector{Float64}}([zeros(3) for _ in 1:NUM_DRONES]))
 
 end
 
+# GENERATE TRAINING DATA
 begin
    
     ## Generate training data
@@ -478,51 +533,98 @@ begin
     # plot_trajectory(t_data[3:end], xᵢ[3:end], ẋᵢ[3:end], ẍᵢ[3:end], false, false)
     # plot_trajectory(t_data, θᵢ[3:end], Ωᵢ[3:end], αᵢ[3:end], false, true)
 
+end
 
-    # T_drone_nn = Chain(Dense(9, 32, tanh), Dense(32, 3))
-    # params_sense = DroneSwarmParamsSense(T_drone_nn)
+# TRIM TRAINING DATA
+begin
+    # Trim training data to remove early numerical estimation errors
+    step_first = 5 #4 should be enough as accel stable here and velocity stable at 2. Only need to reach back for veloctiy
+    step_last = step_first+3 # TODO: REMOVE END TRIMMING (set step_last = end)
+    
+    t_data_trimmed = t_data[step_first:step_last]
+    data_trimmed = data[step_first:step_last]
 
+end
+
+# Modify IC's based on training data # TODO: PUT TRAINING DATA BEFORE ICS SO DON'T HAVE TO MODIFY ICs
+begin
+    # Set IC's to be at step 3 from training data - where data stabilizes
+    ap_u0_num_partitions = 16 #TODO: Find method to get number of partitions in array partitions rather than hard-coding
+
+    # Print u0 to check ICs
+    # println("u0 before update")
+    # println(u0)
+    # println()
+
+    # Loop through all array partition components and store data at selected step in u0
+    for i in 1:ap_u0_num_partitions 
+        u0.x[i][1:length(u0.x[i])] = data_trimmed[1].x[i] 
+    end
+
+    # Print u0 to check ICs
+    # println("u0 after update")
+    # println(u0)
+
+    # Update params that depend on ICs. Set prev values to initial values
+    # TODO: TEST! These values currently matter for initial accel calculations. Switch back to u0 values if they don't
+    # Note not copying as data won't change after generated
+    drone_swarm_params.t_prev = t_data[step_first-1] #t_data_trimmed[1]
+    
+    drone_swarm_params.ẋₗ_prev = data[step_first-1].x[2+4*NUM_DRONES] #u0.x[2+4*NUM_DRONES] 
+    drone_swarm_params.Ωₗ_prev = data[step_first-1].x[4+4*NUM_DRONES] #u0.x[4+4*NUM_DRONES]
+    drone_swarm_params.ẋᵢ_prev = collect(data[step_first-1].x[NUM_DRONES+1:2*NUM_DRONES]) #collect(u0.x[NUM_DRONES+1:2*NUM_DRONES])
+    
+    drone_swarm_params.ẍₗ_prev = ẍₗ[step_first-1]
+    drone_swarm_params.αₗ_prev = αₗ[step_first-1]
+    drone_swarm_params.ẍᵢ_prev = ẍᵢ[step_first-1]
+    
+    #println(drone_swarm_params)
+
+end
+
+
+# TEST: ONE ODE CALL
+begin
     # du_temp = [Vector{Float64}(undef, 3) for i in 1:(4*drone_swarm_params.num_drones+4)]
-
     # du = ArrayPartition(du_temp[1],du_temp[2], du_temp[3], du_temp[4], 
     #     du_temp[5], du_temp[6], du_temp[7], du_temp[8], du_temp[9], du_temp[10],du_temp[11], du_temp[12], 
-    #     du_temp[13],du_temp[14], du_temp[15], du_temp[16]) # Must be a better way of initializing
+    #     du_temp[13],du_temp[14], du_temp[15], du_temp[16]) # Must be a better way of initializing. This doesn't work anyway -> probably need to do du_temp[a][1:length(du_temp[a])] trick
 
-    # du = ArrayPartition([2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], 
-    #     [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], 
-    #     [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0]) 
+    du = ArrayPartition([2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], 
+        [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], 
+        [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0]) 
 
-    # t_span = (0.0, 1.0)
-    
-    # #time_points = 
-    # t = 1.0
+    t = t_data_trimmed[1] #t_data[step_u0] # Test solve at initial datapoint
 
     # ## Test one function call
-    # println("before: $du")
-    # drone_swarm_params(du, u0, p_nn_T_drone, t) # params_sense
-    # println()
-    # println("after: $du")
+    #println("before: $u0") #$du")
+    drone_swarm_params(du, u0, p_nn_T_drone, t) # params_sense
+    println()
+    println("du after: $du") #$du")
 end
+
+
+# TEST: DOES LOSS FXN CHANGE WITH CHANGES IN NN_PARMS?
 begin
     # Run ODE solver (define better u0's, proper fi's and mi's !)
     #step_size_callback = DiscreteCallback(true, print_step_size) # TODO: Tune this (when save etc.)
 
     # Create smaller data series for training (3 timesteps)
-    
 
-    l1 = loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone)
 
-    p_nn_T_drone_new = copy(p_nn_T_drone)
-    p_nn_T_drone_new[end] = 10.0
+    l1 = loss(data_trimmed, t_data_trimmed, drone_swarm_params, u0, p_nn_T_drone)
 
-    l2 = loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone_new)
+    # p_nn_T_drone_new = copy(p_nn_T_drone)
+    # p_nn_T_drone_new[end] = 10.0
+
+    #l2 = loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone_new)
 
     # println(p_nn_T_drone)
     # println()
     # println(p_nn_T_drone_new)
     
     println(l1) # Likely a problem with DroneSwarmParams. Result should change 
-    println(l2) # (perhaps one value is dominating the loss - try initialising smaller)
+    #println(l2) # (perhaps one value is dominating the loss - try initialising smaller)
 
     # HELP HEREE - FD works but gives 0 sensitivity to first few?? Forward diff doesn't work??
     #typeof(p_nn_T_drone)
@@ -530,19 +632,27 @@ begin
     # println(du.x[1])
 
 end
-# begin
-#     t=0.0
-#     out = zeros(length(p_nn_T_drone),length(u0))
-#     cache = FiniteDiff.JacobianCache(p_nn_T_drone)
 
-#     jac = FiniteDiff.finite_difference_jacobian!(du, (du, p_nn_T_drone)->(drone_swarm_params(du,u0,p_nn_T_drone,t)), p_nn_T_drone, cache)
-# end 
 
+
+
+
+# TEST: Gradient
 begin
     #grad = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone), p_nn_T_drone) # Easier
     #grad2 = ForwardDiff.gradient(p_nn_T_drone-> loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone), p_nn_T_drone) # Use flattened params p here. Perhaps Flux doesn't work with FwdDiff???
     #Zygote.gradient
 
+    # t=0.0
+    # out = zeros(length(p_nn_T_drone),length(u0))
+    # cache = FiniteDiff.JacobianCache(p_nn_T_drone)
+
+    # jac = FiniteDiff.finite_difference_jacobian!(du, (du, p_nn_T_drone)->(drone_swarm_params(du,u0,p_nn_T_drone,t)), p_nn_T_drone, cache)
+end
+
+
+# TEST: Training
+begin
     ## Train
     # Train with same ODE simply with tension vectors defined using quasi-static assumption like in paper
     # Will later do using real data from simulator
@@ -572,9 +682,6 @@ begin
 
     # plot optimized control - not required
     #visualization_callback(res.u, loss(res.u); doplot = true)
-
-
-
 
 
 

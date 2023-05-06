@@ -47,7 +47,7 @@ end
 
 # u = x = []
 # TODO: might need to flatten and unflatten matricies if using ForwardDiff
-# TODO: replace all du= with du.=
+# TODO: replace all du= with du.= (rather than [1:end])
 function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
     # Get force and moment inputs from drones
     fₘ = drone_forces_and_moments(params, t)      # TODO: FIX THIS -> how coming through in training data??? Output force required in training data then generate this force for each drone in the generate_forces_and_moments function   Perhaps set a force in training data rather than desired load trajectory?? Or simply use desired load trajectory formulation here w/o force
@@ -77,35 +77,11 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
     println("t: $t")
     println("params.t_prev: $temp_t")
 
-    t_step = t - params.t_prev #0.1 #t - params.t_prev 
-    # println("t_step: $t_step")
-
-    # if t_step == 0.0
-    #     ẍₗ_est = params.ẍₗ_est_prev
-    #     αₗ_est = params.αₗ_est_prev
-
-    #     #error("Step size from cached previous step is 0.0")
-    #     @warn "Step size from cached previous step is 0.0 - using cached estimates for accelerations"
-    #     println("ẍₗ_est: $ẍₗ_est")
-    #     println("αₗ_est: $αₗ_est")
-
-    # else
-    #     ẍₗ_est = (ẋₗ-params.ẋₗ_prev)/t_step
-    #     αₗ_est = (Ωₗ-params.Ωₗ_prev)/t_step
-    # end
-
     # Rather than using backwards finite difference, simply estimate current acceleration as previous actual acceleration
     # Backwards finite difference has lag anyway, this just avoids numerical error amplification by small timesteps
     ẍₗ_est = params.ẍₗ_prev
     αₗ_est = params.αₗ_prev
 
-    println("ẍₗ_est: $ẍₗ_est")
-    println("αₗ_est: $αₗ_est")
-
-    # ẍₗ_est = [0.0, 0.0, 0.0] 
-    # αₗ_est = [0.0, 0.0, 0.0]
-    # ẍₗ_est = (ẋₗ-params.ẋₗ_prev)/t_step
-    # αₗ_est = (Ωₗ-params.Ωₗ_prev)/t_step
 
     # All drones
     for i in 1:params.num_drones
@@ -135,35 +111,7 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         ẋ₍i_rel_Lᵢ₎ = ẋᵢ - (ẋₗ + cross(Ωₗ, params.r_cables[i]))
 
         # Acceleration
-        # t_step = t - params.t_prev 
-
-        # if t_step == 0.0
-        #     error("Step size from cached previous step is 0.0")
-        # end
-
-        # println()
-        # println("t_step")
-        # println(t_step)
- 
-        # If t_step=0, assign all estimates =0 to account for starting step (otherwise will get /0 error)
-        # TODO: Could simply save these values calc'ed at previous timestep (in params) rather than use FD -> use delayed estimation
-        # TODO: Could go back to zero!! Currently trying setting prev velocities based on actual prev velocities before data start
-        # ẍₗ_est = [0.0, 0.0, 0.0] 
-        # αₗ_est = [0.0, 0.0, 0.0]
-        #ẍᵢ_est = [0.0, 0.0, 0.0]
-        
-        # Otherwise, estimate accelerations with backwards FD to allow cable tensions to be calculate
-
-        # if t_step == 0.0
-        #     # @warn "Also for drone" # TODO: REMOVE!!
-        #     ẍᵢ_est = params.ẍᵢ_est_prev[i]
-        #     # println("αₗ_est: $αₗ_est")
-        # else
-        #     ẍᵢ_est = (ẋᵢ-params.ẋᵢ_prev[i])/t_step
-        # end
-        ẍᵢ_est = params.ẍᵢ_prev[i]
-        println("ẍᵢ_est: $ẍᵢ_est")
-
+        ẍᵢ_est = params.ẍᵢ_prev[i] # Estimate drone acceleration as previous timestep acceleration (using backwards FD in velocities exacerbates error)
 
         ẍ₍Lᵢ₎ = ẍₗ_est + cross(αₗ_est, params.r_cables[i]) + cross(Ωₗ, cross(Ωₗ, params.r_cables[i]))
         ẍ₍i_rel_Lᵢ₎ = ẍᵢ_est - ẍ₍Lᵢ₎ - cross(αₗ_est, r₍i_rel_Lᵢ₎) - cross(Ωₗ, cross(Ωₗ,r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ,ẋ₍i_rel_Lᵢ₎)
@@ -172,8 +120,6 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         ## Drone side
         nn_ip = vcat(x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎)
         nn_ip = convert.(Float32, nn_ip)
-
-        #println(nn_ip)
 
         Tᵢ_drone = nn_T_drone(nn_ip)
         #Tᵢ_load = -Tᵢ_drone # TODO: Note this Ti_load = -Ti_drone relationship will not hold without assumption
@@ -242,18 +188,13 @@ function loss(data, t_data, drone_swarm_params, u0, p_nn_T_drone)
     t_span = (t_data[1], t_data[end])  #t_span = (0.0, 1.0)
     time_save_points = t_span[1]:(t_data[2]-t_data[1]):t_span[2] # Assuming data saved at fixed-distance points round(, digits=3)
 
-    # println("t_span: $t_span") # Perhaps rounding errors here
-    # println("time_save_points: $time_save_points")
-
-    #print("drone_swarm_params: $drone_swarm_params")
-
     prob = ODEProblem(drone_swarm_params, u0, t_span, p_nn_T_drone) # Check that step size in ODE is correct. callback=step_size_callback, OR used fixed timestep solve dt=myparameters.dt??
-    sol = solve(prob, Tsit5(), saveat=time_save_points, dt=0.01)
+    sol = solve(prob, Tsit5(), saveat=time_save_points, adaptive=false, dt=0.001) #TODO: Turn adaptive solve back on 
     
     # Get loss relative to data
     l = 0
     for step_num in 1:length(t_data) #size(data,2)
-        l += mean((data[step_num] - sol.u[step_num]).^2) #sum rather than mean?? # PERHAPS NEED TO FLATTEN???? ArrayToolsArray
+        l += mean((data[step_num] - sol.u[step_num]).^2) #sum rather than mean??
     end
 
     return l

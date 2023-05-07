@@ -14,9 +14,12 @@ begin
     h = [1, 2, 3]
     a = [4, 5, 6]
 
-    f = h./a
+    d = [a, h]
+    e = deepcopy(d)
 
-    println(f)
+    a[1] = 10
+
+    println(e)
 end
 
 

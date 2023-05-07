@@ -66,4 +66,9 @@ function DroneSwarmParams_init(; g::Float64, num_drones::Int64, m_load::Float64,
                             deepcopy(ẍₗ_prev), deepcopy(αₗ_prev), deepcopy(ẍᵢ_prev))  #ẍₗ_est_prev, αₗ_est_prev, ẍᵢ_est_prev)
 end
 
- 
+
+mutable struct TrainingData
+    iter_cnt::Int
+    L_hist::Vector{Float64}
+
+end

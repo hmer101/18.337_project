@@ -309,4 +309,8 @@ function plot_results(t_data, T_data::Vector{Vector{Vector{Float64}}}, x₍i_rel
 
 end
 
+# Plot loss history during training
+function plot_loss(train_data::TrainingData)
+    plot(1:train_data.iter_cnt, train_data.L_hist, xlabel="Iteration", ylabel="Loss (MSE)", label=false, linewidth=2.5) #size=(400, 300) xlims=x_domain, seriestype = :scatter, legend = :topright, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=)
+end
 

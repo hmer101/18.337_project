@@ -11,15 +11,10 @@ end
 
 
 begin
-    h = [1, 2, 3]
-    a = [4, 5, 6]
+    my_vector = Float64[] #[1, 2, 3, 4]
+    push!(my_vector, 5)
 
-    d = [a, h]
-    e = deepcopy(d)
-
-    a[1] = 10
-
-    println(e)
+    println(my_vector)
 end
 
 

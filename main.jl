@@ -643,18 +643,60 @@ begin
     ## Plot results/prediction before training
 
     ## Setup and run the optimization
+    # Set up training data callable struct to store training information in callback
+    maxiters = 100
+    training_data = TrainingData(0, Vector{Float64}(undef, maxiters+1)) # Use Float64[] and push if don't want to pre-allocate array
+
     adtype = Optimization.AutoFiniteDiff() 
     optf = Optimization.OptimizationFunction((p_nn_T_drone, p)-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), adtype) #(x, p) -> loss(x), adtype)
 
     optprob = Optimization.OptimizationProblem(optf, p_nn_T_drone)
-    res = Optimization.solve(optprob, OptimizationOptimisers.Adam(lr), maxiters = 100) #callback = visualization_callback,   
+    res = Optimization.solve(optprob, OptimizationOptimisers.Adam(lr), maxiters = maxiters, callback = training_data) #TODO: Can we cancel after loss is small enough?? 
     
     ## Plot loss history
-    
+    plot_loss(training_data)
 
     ## Plot results/prediction after training
 
 end
+
+
+
+# Callback function during training to store and print loss information
+function (train_data::TrainingData)(p_nn_T_drone, l_current) #; doplot = false) 
+    # Print iteration and loss 
+    iter_temp = train_data.iter_cnt
+    print("Iter: $iter_temp ")
+    println("Loss: $l_current")
+
+    # if doplot
+    #     pl, _ = visualize(p_nn_T_drone)
+    #     display(pl)
+    # end
+
+    #push!(train_data.L_hist, l_current) # For non pre-allocated L_hist
+    train_data.iter_cnt += 1
+    train_data.L_hist[train_data.iter_cnt] = l_current
+
+    return false
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#function plot_loss_history
+
+
 
 # TODO:
 # Do I need to do data batches, epochs etc?? What updates parameters?

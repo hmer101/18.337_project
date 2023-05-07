@@ -30,8 +30,9 @@ begin
 
    import AbstractDifferentiation as AD
 
-   include("utils.jl")
    include("datatypes.jl")
+   include("utils.jl")
+   include("plotting.jl")
    include("generateData.jl")
    include("solveTrain.jl")
 end
@@ -214,12 +215,19 @@ end
 
 # PLOT TRAINING DATA
 begin
-    #plot_trajectory(t_data, xₗ, ẋₗ, ẍₗ, true, false) # TODO: Modify plotting functions to take ArrayPartitions or convert back from AP
-    # plot_trajectory(t_data, θₗ, Ωₗ, αₗ, true, true)
+    # Select trimmed or untrimmed data
+    t_data_plot = t_data_trimmed #t_data
+    data_plot = data_trimmed #data
 
-    # Display trajectory - drone
-    # plot_trajectory(t_data[3:end], xᵢ[3:end], ẋᵢ[3:end], ẍᵢ[3:end], false, false)
-    # plot_trajectory(t_data, θᵢ[3:end], Ωᵢ[3:end], αᵢ[3:end], false, true)
+    # Load
+    
+    plot_trajectory(t_data_plot, data_plot, ẍₗ, drone_swarm_params, p_nn_T_drone, true, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αₗ, drone_swarm_params, p_nn_T_drone, true, true) # Angular
+
+    # Drone
+    plot_trajectory(t_data_plot, data_plot, ẍᵢ, drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αᵢ, drone_swarm_params, p_nn_T_drone, false, true) # Angular
 end
 
 
@@ -420,7 +428,29 @@ begin
 end
 
 
+# PLOT TRAINED RESULTS ALONGSIDE TRAINING DATA
+begin
+    # Select trimmed or untrimmed data
+    t_data_plot = t_data_trimmed #t_data
+    data_plot = data_trimmed #data
 
+    # Solve system
+    t_span = (t_data_plot[1], t_data_plot[end]) 
+    time_save_points = t_span[1]:(t_data_plot[2]-t_data_plot[1]):t_span[2] # Assuming data saved at fixed-distance points round(, digits=3)
+    sol = solve_ode_system(drone_swarm_params, time_save_points, u0, p_nn_T_drone, false, 0.1, data, ẍₗ, αₗ, ẍᵢ, t_data, step_first)
+    
+
+
+    # Load
+    
+    # plot_trajectory(t_data_plot, data_plot, ẍₗ, drone_swarm_params, p_nn_T_drone, true, false) # Linear
+    # plot_trajectory(t_data_plot, data_plot, αₗ, drone_swarm_params, p_nn_T_drone, true, true) # Angular
+
+    # # Drone
+    # plot_trajectory(t_data_plot, data_plot, ẍᵢ, drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    # #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    # plot_trajectory(t_data_plot, data_plot, αᵢ, drone_swarm_params, p_nn_T_drone, false, true) # Angular
+end
 
 
 

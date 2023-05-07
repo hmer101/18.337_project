@@ -189,7 +189,7 @@ function generate_training_data(t_step, params)
                             [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])
 
-    data = [copy(ap_temp) for _ in 1:length(t_data)]
+    data = [deepcopy(ap_temp) for _ in 1:length(t_data)]
 
     # Assign elements of data array
     # Across all timesteps

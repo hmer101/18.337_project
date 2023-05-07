@@ -33,16 +33,27 @@ end
 # Currently set values close to quasi-static state-regulation inputs. TODO: might need to change to include horizonal components 
 # TODO: Perhaps try trajectory-following
 function drone_forces_and_moments(params, t::Float64)
-    # Preallocate the output vector
-    fₘ = [[0.0, Vector{Float64}(undef, 3)] for i in 1:params.num_drones]
+    # This uses a reasonable estimate of fₘ for the static trajectory
+    # # Preallocate the output vector
+    # fₘ = [[0.0, Vector{Float64}(undef, 3)] for i in 1:params.num_drones]
     
-    # Store the force and moment inputs for each drone
-    for i in 1:params.num_drones
-        fₘ[i][1] = (params.m_drones[i]+params.m_cables[i])*params.g + params.m_load/params.num_drones # Force
-        fₘ[i][2] = [0.0, 0.0, 0.0] # Moment
-    end
+    # # Store the force and moment inputs for each drone
+    # for i in 1:params.num_drones
+    #     fₘ[i][1] = (params.m_drones[i] + params.m_cables[i] + params.m_load/params.num_drones)*params.g # Force
+    #     fₘ[i][2] = [0.0, 0.0, 0.0] # Moment
+    # end
 
-    return fₘ
+    # This uses the forces and moments calculated in the data required to make the swarm follow the desired trajectory
+    # Convert 
+    
+    # Do a zero-order-hold on input data
+    f_ind = (t-params.t_start)/params.t_start
+    f_m = params.fₘ[f_ind]
+
+    print("f_m: ")
+    println(f_m)
+
+    return f_m
 end
 
 # u = x = []
@@ -265,6 +276,9 @@ function generate_tension_training_data(t_step, params)
     T = 2*π/ω_scalar 
     t_data = 0.0:t_step:T
 
+    # Vector in z direction
+    e₃ = [0,0,1] 
+
     ## Generate the circular load trajectory
     # Preallocate arrays
     # Drones
@@ -276,6 +290,11 @@ function generate_tension_training_data(t_step, params)
     Ωᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
     αᵢ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)]
 
+    # Drone inputs
+    fₘ = [[[0.0, Vector{Float64}(undef, 3)] for _ in 1:params.num_drones] for _ in 1:length(t_data)]
+    #print(typeof(fₘ))
+
+
     # Load
     xₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     ẋₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
@@ -285,10 +304,7 @@ function generate_tension_training_data(t_step, params)
     Ωₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     αₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
 
-    # Drone relative to load
-    # x₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
-    # ẋ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
-    # ẍ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    # Tension
     T = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
 
     # Cache previous values for FD calculations
@@ -321,6 +337,7 @@ function generate_tension_training_data(t_step, params)
         for i in 1:params.num_drones
             ## Drone relative to world
             # Position
+            # Note: currently tension calc is only used to get position of drone relative to load
             qᵢ = T₍ind₎[i]/norm(T₍ind₎[i])
             Lᵢqᵢ = params.l_cables[i]*qᵢ 
 
@@ -332,6 +349,7 @@ function generate_tension_training_data(t_step, params)
             # Acceleration (use second order backwards finite difference)
             ẍᵢ[ind][i] = (ẋᵢ[ind][i]-ẋᵢ_prev[i])/t_step
             
+           
             # Orientation (will change with different trajectories)
             θᵢ[ind][i] = [0.0, 0.0, 0.0]
 
@@ -341,17 +359,17 @@ function generate_tension_training_data(t_step, params)
             # Angular acceleration
             αᵢ[ind][i] = (Ωᵢ[ind][i] - Ωᵢ_prev[i])/t_step
 
-            ## Drone relative to attachment point
-            # Position
-            # r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
-            # x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
-            
-            # # Velocity
-            # ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ[ind][i] - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
 
-            # # Acceleration
-            # ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
-            # ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ[ind][i] - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
+            # Required force
+            Rᵢ = rpy_to_R(θᵢ[ind][i])
+        
+            v_rhs = params.m_drones[i]*ẍᵢ[ind][i] + params.m_drones[i]*params.g*e₃ - Rₗ*T₍ind₎[i]
+            v_lhs = Rᵢ*e₃
+            fₘ[ind][i][1] = (v_rhs./v_lhs)[3] # Taking last component works for no drone orientation change case. TODO: TEST WITH OTHER ORIENTATIONS
+
+            # Required moment
+            mᵢ = params.j_drones[i]*αᵢ[ind][i] + cross(Ωᵢ[ind][i],(params.j_drones[i]*Ωᵢ[ind][i]))
+            fₘ[ind][i][2][1:end] = mᵢ[1:end]
 
             ## Update values for backwards finite difference
             xᵢ_prev[i] = xᵢ[ind][i]
@@ -387,7 +405,7 @@ function generate_tension_training_data(t_step, params)
         #data[i].x[1][1:length(arr_parts[1].x[1])] = [2.0, 2.0, 2.0]
     end
 
-    return t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ
+    return t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ
 
 end
 
@@ -443,7 +461,7 @@ begin
 
     drone_swarm_params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
-                                    r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], re_nn_T_drone=re_nn_T_drone, 
+                                    r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], t_step=0.1, t_start=0.0, fₘ::Vector{Vector{Vector{Any}}}, re_nn_T_drone=re_nn_T_drone, 
                                     t_prev=0.0, ẋₗ_prev=u0.x[2+4*NUM_DRONES], Ωₗ_prev=u0.x[4+4*NUM_DRONES], ẋᵢ_prev=collect(u0.x[NUM_DRONES+1:2*NUM_DRONES]), 
                                     ẍₗ_prev=[0.0, 0.0, 0.0], αₗ_prev=[0.0, 0.0, 0.0], ẍᵢ_prev=Vector{Vector{Float64}}([zeros(3) for _ in 1:NUM_DRONES]))
 
@@ -454,7 +472,7 @@ begin
    
     ## Generate training data
     t_step_data = 0.1
-    t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ = generate_tension_training_data(t_step_data, drone_swarm_params) #t_data, xᵢ, ẋᵢ, ẍᵢ, θᵢ, Ωᵢ, αᵢ, xₗ, ẋₗ, ẍₗ, θₗ, Ωₗ, αₗ
+    t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ = generate_tension_training_data(t_step_data, drone_swarm_params) #t_data, xᵢ, ẋᵢ, ẍᵢ, θᵢ, Ωᵢ, αᵢ, xₗ, ẋₗ, ẍₗ, θₗ, Ωₗ, αₗ
     println()
     #println(data[end])
 
@@ -484,6 +502,7 @@ begin
     
     t_data_trimmed = t_data[step_first:step_last]
     data_trimmed = data[step_first:step_last]
+    fₘ_trimmed = fₘ[step_first:step_last]
 
 end
 

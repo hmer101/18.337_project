@@ -11,21 +11,12 @@ end
 
 
 begin
-    v = Vector{Vector{Float64}}([zeros(3) for _ in 1:3]) # Vector{Vector{Float64}}(Vector{Float64}(undef, 3), 3)
+    h = [1, 2, 3]
+    a = [4, 5, 6]
 
-    b = 39.0
+    f = h./a
 
-    a = [1.0, 2.0, 3.0, b]
-    c = a[2]
-
-
-
-    a[2] = 90.0
-    v[2] = a #[1:end]
-    a[1] = 50
-    #b = 100
-
-    println(v)
+    println(f)
 end
 
 

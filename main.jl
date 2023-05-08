@@ -213,34 +213,38 @@ begin
     println()
 end
 
-# PLOT TRAINING DATA
-begin
-    # Select trimmed or untrimmed data
-    t_data_plot = t_data_trimmed #t_data
-    data_plot = data_trimmed #data
-
-    # Load
-    
-    plot_trajectory(t_data_plot, data_plot, ẍₗ, drone_swarm_params, p_nn_T_drone, true, false) # Linear
-    plot_trajectory(t_data_plot, data_plot, αₗ, drone_swarm_params, p_nn_T_drone, true, true) # Angular
-
-    # Drone
-    plot_trajectory(t_data_plot, data_plot, ẍᵢ, drone_swarm_params, p_nn_T_drone, false, false) # Linear
-    #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
-    plot_trajectory(t_data_plot, data_plot, αᵢ, drone_swarm_params, p_nn_T_drone, false, true) # Angular
-end
-
-
 # TRIM TRAINING DATA
 begin
     # Trim training data to remove early numerical estimation errors
     step_first = 5 #4 should be enough as accel stable here and velocity stable at 2. Only need to reach back for veloctiy
     step_last = step_first+3 # TODO: REMOVE END TRIMMING (set step_last = end)
     
-    t_data_trimmed = t_data[step_first:step_last]
-    data_trimmed = data[step_first:step_last]
-    fₘ_trimmed = fₘ[step_first:step_last]
+    t_data_trimmed = t_data[step_first:end] #step_last
+    data_trimmed = data[step_first:end]
 
+    ẍᵢ_trimmed = ẍᵢ[step_first:end]
+    αᵢ_trimmed = αᵢ[step_first:end]
+    ẍₗ_trimmed = ẍₗ[step_first:end]
+    αₗ_trimmed = αₗ[step_first:end]
+
+    fₘ_trimmed = fₘ[step_first:end]
+
+end
+
+# PLOT TRAINING DATA
+begin
+    # Select trimmed or untrimmed data
+    t_data_plot = t_data_trimmed #t_data_trimmed #t_data
+    data_plot = data_trimmed #data_trimmed #data
+
+    # Load
+    plot_trajectory(t_data_plot, data_plot, ẍₗ_trimmed, false, false, drone_swarm_params, true, false, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αₗ_trimmed, false, false, drone_swarm_params, true, true, false) # Angular
+
+    # Drone
+    plot_trajectory(t_data_plot, data_plot, ẍᵢ_trimmed, false, false, drone_swarm_params, false, false, false) # Linear
+    #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αᵢ_trimmed, false, false, drone_swarm_params, false, true, false) # Angular
 end
 
 
@@ -282,12 +286,13 @@ begin
     ## Setup parameters
     # Cable tension NNs - take in flattened vector inputs, output tension vector at drone and load respectively
     input_dim = 9 # Position, velocity and acceleration vectors for each drone relative to the attachment point of their attached cables on the load
-    T_drone_nn = Chain(Dense(input_dim, 3, tanh)) #Chain(Dense(input_dim, 32, tanh), Dense(32, 3)) # TODO: Could try 2 hidden layers!!
+    T_drone_nn = Chain(Dense(input_dim, 20, tanh), Dense(20, 3)) #Chain(Dense(input_dim, 3, tanh)) #Chain(Dense(input_dim, 32, tanh), Dense(32, 3)) # TODO: Could try 2 hidden layers!!
 
     # Initialise parameter struct
     # Note that cache values are initialised at corresponding u0 values
     j_drone = [2.32 0 0; 0 2.32 0; 0 0 4]
     p_nn_T_drone, re_nn_T_drone = Flux.destructure(T_drone_nn)
+    p_nn_T_drone_pre_train = copy(p_nn_T_drone) # Store pre-trained values for visualization
 
     drone_swarm_params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
@@ -353,7 +358,6 @@ begin
 end
 
 
-
 # TEST: Gradient
 begin
     # Method 1 - FiniteDiff
@@ -405,13 +409,13 @@ begin
     #reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
     
     ## Opt parameters
-    lr = 0.01
+    lr = 0.01 #0.01
 
     ## Plot results/prediction before training
 
     ## Setup and run the optimization
     # Set up training data callable struct to store training information in callback
-    maxiters = 100
+    maxiters = 10000 #500 #1000 #100
     training_data = TrainingData(0, Vector{Float64}(undef, maxiters+1)) # Use Float64[] and push if don't want to pre-allocate array
 
     adtype = Optimization.AutoFiniteDiff() 
@@ -420,6 +424,10 @@ begin
     optprob = Optimization.OptimizationProblem(optf, p_nn_T_drone)
     res = Optimization.solve(optprob, OptimizationOptimisers.Adam(lr), maxiters = maxiters, callback = training_data) #TODO: Can we cancel after loss is small enough?? 
     
+    # Update nn params based on training
+    p_nn_T_drone .= res
+
+
     ## Plot loss history
     plot_loss(training_data)
 
@@ -434,43 +442,18 @@ begin
     t_data_plot = t_data_trimmed #t_data
     data_plot = data_trimmed #data
 
-    # Solve system
-    t_span = (t_data_plot[1], t_data_plot[end]) 
-    time_save_points = t_span[1]:(t_data_plot[2]-t_data_plot[1]):t_span[2] # Assuming data saved at fixed-distance points round(, digits=3)
-    sol = solve_ode_system(drone_swarm_params, time_save_points, u0, p_nn_T_drone, false, 0.1, data, ẍₗ, αₗ, ẍᵢ, t_data, step_first)
-    
+    # Plot prediction vs data
+    # Prior to training
+    plot_pred_vs_data(t_data_plot, data_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn_T_drone_pre_train, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
 
+    # Post training
+    plot_pred_vs_data(t_data_plot, data_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn_T_drone, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
 
-    # Load
-    
-    # plot_trajectory(t_data_plot, data_plot, ẍₗ, drone_swarm_params, p_nn_T_drone, true, false) # Linear
-    # plot_trajectory(t_data_plot, data_plot, αₗ, drone_swarm_params, p_nn_T_drone, true, true) # Angular
-
-    # # Drone
-    # plot_trajectory(t_data_plot, data_plot, ẍᵢ, drone_swarm_params, p_nn_T_drone, false, false) # Linear
-    # #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
-    # plot_trajectory(t_data_plot, data_plot, αᵢ, drone_swarm_params, p_nn_T_drone, false, true) # Angular
 end
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-#function plot_loss_history
-
-
-
 # TODO:
-# Do I need to do data batches, epochs etc?? What updates parameters?
+# Do I need to do data batches, epochs etc??
 # How to visualize
 
 # epochs = 400

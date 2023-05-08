@@ -40,7 +40,7 @@ function reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, s
     drone_swarm_params.Ωₗ_prev = deepcopy(data[step_first-1].x[4+4*num_drones])
     drone_swarm_params.ẋᵢ_prev = deepcopy(collect(data[step_first-1].x[num_drones+1:2*num_drones]))
 
-    # Accelerations
+    # Accelerations (TODO: Only need first value, not entire array, passed in)
     drone_swarm_params.ẍₗ_prev = deepcopy(ẍₗ[step_first-1]) 
     drone_swarm_params.αₗ_prev = deepcopy(αₗ[step_first-1]) 
     drone_swarm_params.ẍᵢ_prev = deepcopy(ẍᵢ[step_first-1])

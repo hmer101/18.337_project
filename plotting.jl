@@ -19,7 +19,7 @@ end
 
 
 # Plot data from a vector containing num_drones x 3-vectors over a time span given in t_data 
-function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plot_components::Bool, x_domain::Tuple{Float64, Float64}, label_prefix::String, y_label::String)
+function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plot_components::Bool, x_domain::Tuple{Float64, Float64}, label_prefix::String, y_label::String, seriestype, colors)
     # Loop through all drones/cables
     for drone_ind in 1:length(data[1])
         # Extract x,y,z components
@@ -34,11 +34,15 @@ function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plo
         two_dp_formatter(x) = @sprintf("%.2f", x)
 
         if plot_components
-            # Plot components for all time points
-            plot!(plot_var, t_data, [comp1, comp2, comp3], xlims=x_domain, seriestype = :scatter, legend = :topright, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
+            # Plot components for all time points seriestype =:scatter
+            selected_colors = [colors[drone_ind][1] colors[drone_ind][2] colors[drone_ind][3]]
+
+            plot!(plot_var, t_data, [comp1 comp2 comp3], xlims=x_domain, seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = :topright, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
         else
             # Plot magnitude for all time points
-            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = :scatter, legend = :topright, label = "$label_prefix$drone_ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
+            selected_colors = colors[drone_ind][1]
+
+            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = :topright, label = "$label_prefix$drone_ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
         end
 
     end
@@ -48,10 +52,8 @@ function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plo
 end
 
 
-# Plot trajectory data generated for training the NN
-# TODO: Make plotting work directly with ArrayPartition rather than having to convert twice (current plotting code temporary as change data type to ArrayPartition)
-function plot_trajectory(t_data, data, accel_data, drone_swarm_params::DroneSwarmParams, p_nn_T_drone, is_load::Bool, is_angular::Bool) #x_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẋ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, #ẍ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, is_load::Bool, is_angular::Bool)
-    ## Pre-process data
+# Convert data from vector of ArrayPartition form to nested vectors as plotting function was written assuming this data form
+function convert_arrays_for_plot(data, t_data, accel_data, drone_swarm_params::DroneSwarmParams, is_load::Bool, is_angular::Bool, have_accel::Bool)
     # Convert array of ArrayPartitions into form that plotting function uses
     # Preallocate
     if is_load
@@ -69,12 +71,17 @@ function plot_trajectory(t_data, data, accel_data, drone_swarm_params::DroneSwar
         if (is_load && !is_angular) # Load linear 
             x_data[i] .= [data[i].x[1+4*drone_swarm_params.num_drones]]
             ẋ_data[i] .= [data[i].x[2+4*drone_swarm_params.num_drones]]
-            ẍ_data[i] .= [accel_data[i]]
+
+            if have_accel
+                ẍ_data[i] .= [accel_data[i]]
+            end
         elseif (is_load && is_angular) # Load angular 
             x_data[i] .= [data[i].x[3+4*drone_swarm_params.num_drones]]
-            #println(x_data[i])
             ẋ_data[i] .= [data[i].x[4+4*drone_swarm_params.num_drones]]
-            ẍ_data[i] .= [accel_data[i]]
+
+            if have_accel
+                ẍ_data[i] .= [accel_data[i]]
+            end
         elseif (!is_load && !is_angular) # Drone linear
             tmp = [data[i].x[j] for j in 1:drone_swarm_params.num_drones]
             x_data[i] = tmp
@@ -82,8 +89,10 @@ function plot_trajectory(t_data, data, accel_data, drone_swarm_params::DroneSwar
             tmp = [data[i].x[j] for j in drone_swarm_params.num_drones+1:2*drone_swarm_params.num_drones]
             ẋ_data[i] = tmp 
             
-            tmp = accel_data[i]
-            ẍ_data[i] = tmp
+            if have_accel
+                tmp = accel_data[i]
+                ẍ_data[i] = tmp
+            end
         else # Drone angular
             tmp = [data[i].x[j] for j in 2*drone_swarm_params.num_drones+1:3*drone_swarm_params.num_drones]
             x_data[i] = tmp
@@ -91,14 +100,24 @@ function plot_trajectory(t_data, data, accel_data, drone_swarm_params::DroneSwar
             tmp = [data[i].x[j] for j in 3*drone_swarm_params.num_drones+1:4*drone_swarm_params.num_drones]
             ẋ_data[i] = tmp
             
-            tmp = accel_data[i]
-            ẍ_data[i] = tmp
+            if have_accel
+                tmp = accel_data[i]
+                ẍ_data[i] = tmp
+            end
         end
 
     end
 
+    return x_data, ẋ_data, ẍ_data
 
-    
+end
+
+
+# Plot trajectory data generated for training the NN
+# TODO: Make plotting work directly with ArrayPartition rather than having to convert twice (current plotting code temporary as change data type to ArrayPartition)
+function plot_trajectory(t_data, data, accel_data, t_pred, u_pred, drone_swarm_params::DroneSwarmParams, is_load::Bool, is_angular::Bool, plot_sol::Bool) #x_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẋ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, #ẍ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, is_load::Bool, is_angular::Bool)
+    ## Pre-process data
+    x_data, ẋ_data, ẍ_data = convert_arrays_for_plot(data, t_data, accel_data, drone_swarm_params, is_load, is_angular, true)
 
     ## Set up plots
     x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
@@ -132,44 +151,82 @@ function plot_trajectory(t_data, data, accel_data, drone_swarm_params::DroneSwar
     end
 
     ## Plot trajectory data and prediction
+    seriestype_data = :scatter
+    colors = [[:green, :blue, :purple], [:red, :lime, :magenta], [:black, :grey, :aqua]] #x, y, z components for all drones (load will simply take first set)
+
     # Position
     p_x = plot()
-    plot_data!(p_x, t_data, x_data, true, x_domain, legend_label, y_axis_label) # data
+    plot_data!(p_x, t_data, x_data, true, x_domain, legend_label, y_axis_label, seriestype_data, colors) # data
 
     # Velocity
     p_ẋ = plot()
-    plot_data!(p_ẋ, t_data, ẋ_data, true, x_domain, legend_label_dot, y_axis_label_dot)
+    plot_data!(p_ẋ, t_data, ẋ_data, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_data, colors)
 
     # Acceleration
     p_ẍ = plot()
-    plot_data!(p_ẍ, t_data, ẍ_data, true, x_domain, legend_label_ddot, y_axis_label_ddot)
+    plot_data!(p_ẍ, t_data, ẍ_data, true, x_domain, legend_label_ddot, y_axis_label_ddot, seriestype_data, colors)
     
+    # Plot predicted solution alongside data if requested (no acceleration prediciton as acceleration not in state)
+    if plot_sol
+        ## Convert 
+        x_pred, ẋ_pred, _ = convert_arrays_for_plot(u_pred, t_pred, accel_data, drone_swarm_params, is_load, is_angular, false)
+
+        ## Plot
+        seriestype_pred = :line
+
+        # Position prediction
+        plot_data!(p_x, t_pred, x_pred, true, x_domain, legend_label, y_axis_label, seriestype_pred, colors)
+
+        # Velocity prediction
+        plot_data!(p_ẋ, t_pred, ẋ_pred, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_pred, colors)
+
+
+    end
+
     ## Display trajectory
     p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600), title=plot_title)
     display(p_traj)
 end
 
+# Plot trajectory data vs prediction from solving ODE with tension approximated by NN
+function plot_pred_vs_data(t_data_plot, data_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
+    # Solve system
+    t_span = (t_data_plot[1], t_data_plot[end]) 
+    time_save_points = t_span[1]:(t_data_plot[2]-t_data_plot[1]):t_span[2] # Assuming data saved at fixed-distance points round(, digits=3)
+    sol = solve_ode_system(drone_swarm_params, time_save_points, u0, p_nn, false, 0.1, data, ẍₗ, αₗ, ẍᵢ, t_data, step_first)
+
+    # Load
+    plot_trajectory(t_data_plot, data_plot, ẍₗ_trimmed, sol.t, sol.u, drone_swarm_params, true, false, true) # Linear
+    plot_trajectory(t_data_plot, data_plot, αₗ_trimmed, sol.t, sol.u, drone_swarm_params, true, true, true) # Angular
+
+    # Drone
+    plot_trajectory(t_data_plot, data_plot, ẍᵢ_trimmed, sol.t, sol.u, drone_swarm_params, false, false, true) # Linear
+    plot_trajectory(t_data_plot, data_plot, αᵢ_trimmed, sol.t, sol.u, drone_swarm_params, false, true, true) # Angular
+
+end
 
 # Plot data generated for training the NN
 function plot_tension_nn_ip_op(t_data, T_data::Vector{Vector{Vector{Float64}}}, x₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, ẋ₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, ẍ₍i_rel_Lᵢ₎::Vector{Vector{Vector{Float64}}}, plot_components::Bool)
     x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
     
     ## Plot tension data
+    seriestype_data = :scatter
+
     p_tension = plot()
-    plot_data!(p_tension, t_data, T_data, plot_components, x_domain, "T_data_","Tension (N)")
+    plot_data!(p_tension, t_data, T_data, plot_components, x_domain, "T_data_","Tension (N)", seriestype_data)
     
     ## Plot trajectory data
     # Position
     p_x = plot()
-    plot_data!(p_x, t_data, x₍i_rel_Lᵢ₎, plot_components, x_domain, "x₍i_rel_Lᵢ₎_", "Location (m)")
+    plot_data!(p_x, t_data, x₍i_rel_Lᵢ₎, plot_components, x_domain, "x₍i_rel_Lᵢ₎_", "Location (m)", seriestype_data)
 
     # Velocity - first value will be off (backwards FD) so don't include
     p_ẋ = plot()
-    plot_data!(p_ẋ, t_data[2:end], ẋ₍i_rel_Lᵢ₎[2:end], plot_components, x_domain, "ẋ₍i_rel_Lᵢ₎_", "Velocity (m/s)")
+    plot_data!(p_ẋ, t_data[2:end], ẋ₍i_rel_Lᵢ₎[2:end], plot_components, x_domain, "ẋ₍i_rel_Lᵢ₎_", "Velocity (m/s)", seriestype_data)
 
     # Acceleration - first two values will be off (backwards FD) so don't include
     p_ẍ = plot()
-    plot_data!(p_ẍ, t_data[3:end], ẍ₍i_rel_Lᵢ₎[3:end], plot_components, x_domain, "ẍ₍i_rel_Lᵢ₎_", "Acceleration (m/s²)")
+    plot_data!(p_ẍ, t_data[3:end], ẍ₍i_rel_Lᵢ₎[3:end], plot_components, x_domain, "ẍ₍i_rel_Lᵢ₎_", "Acceleration (m/s²)", seriestype_data)
 
 
     ## Display plots
@@ -187,29 +244,67 @@ end
 
 
 
-# # Plot trajectory data generated for training the NN
-# function plot_trajectory_old(t_data, x::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẋ::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẍ::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, is_load::Bool, is_angular::Bool)
-#     x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
-#     plot_title = "Drone Trajectories"
+
+# Plot trajectory data generated for training the NN
+# TODO: Make plotting work directly with ArrayPartition rather than having to convert twice (current plotting code temporary as change data type to ArrayPartition)
+# function plot_trajectory_old(t_data, data, accel_data, drone_swarm_params::DroneSwarmParams, p_nn_T_drone, is_load::Bool, is_angular::Bool) #x_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, ẋ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, #ẍ_data::Union{Vector{Vector{Float64}}, Vector{Vector{Vector{Float64}}}}, is_load::Bool, is_angular::Bool)
+#     ## Pre-process data
+#     # Convert array of ArrayPartitions into form that plotting function uses
+#     # Preallocate
+#     if is_load
+#         x_data = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+#         ẋ_data = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+#         ẍ_data = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
+#     else
+#         x_data = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]] for _ in 1:length(t_data)] #for _ in drone_swarm_params.num_drones
+#         ẋ_data = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]] for _ in 1:length(t_data)]
+#         ẍ_data = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]] for _ in 1:length(t_data)]
+#     end
+
+#     # Pull out relevant data
+#     for i in 1:length(t_data)
+#         if (is_load && !is_angular) # Load linear 
+#             x_data[i] .= [data[i].x[1+4*drone_swarm_params.num_drones]]
+#             ẋ_data[i] .= [data[i].x[2+4*drone_swarm_params.num_drones]]
+#             ẍ_data[i] .= [accel_data[i]]
+#         elseif (is_load && is_angular) # Load angular 
+#             x_data[i] .= [data[i].x[3+4*drone_swarm_params.num_drones]]
+#             #println(x_data[i])
+#             ẋ_data[i] .= [data[i].x[4+4*drone_swarm_params.num_drones]]
+#             ẍ_data[i] .= [accel_data[i]]
+#         elseif (!is_load && !is_angular) # Drone linear
+#             tmp = [data[i].x[j] for j in 1:drone_swarm_params.num_drones]
+#             x_data[i] = tmp
+
+#             tmp = [data[i].x[j] for j in drone_swarm_params.num_drones+1:2*drone_swarm_params.num_drones]
+#             ẋ_data[i] = tmp 
+            
+#             tmp = accel_data[i]
+#             ẍ_data[i] = tmp
+#         else # Drone angular
+#             tmp = [data[i].x[j] for j in 2*drone_swarm_params.num_drones+1:3*drone_swarm_params.num_drones]
+#             x_data[i] = tmp
+
+#             tmp = [data[i].x[j] for j in 3*drone_swarm_params.num_drones+1:4*drone_swarm_params.num_drones]
+#             ẋ_data[i] = tmp
+            
+#             tmp = accel_data[i]
+#             ẍ_data[i] = tmp
+#         end
+
+#     end
+
+
     
-#     ## Hanle case for load
+
+#     ## Set up plots
+#     x_domain = (t_data[1], t_data[end]+((t_data[2] - t_data[1])/10))
+
+#     ## Set title
 #     if is_load
 #         plot_title = "Load Trajectory"
-
-#         # Repackage load data to work with plot function
-#         x_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
-#         ẋ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
-#         ẍ_new = [[Vector{Float64}(undef, 3)] for _ in 1:length(t_data)]
-
-#         for i in 1:length(t_data)
-#             x_new[i] = [x[i]]
-#             ẋ_new[i] = [ẋ[i]]
-#             ẍ_new[i] = [ẍ[i]]
-#         end
 #     else
-#         x_new = x
-#         ẋ_new = ẋ
-#         ẍ_new = ẍ
+#         plot_title = "Drone Trajectories"
 #     end
 
 #     ## Set axes labels
@@ -233,18 +328,18 @@ end
 
 #     end
 
-#     ## Plot trajectory data
+#     ## Plot trajectory data and prediction
 #     # Position
 #     p_x = plot()
-#     plot_data!(p_x, t_data, x_new, true, x_domain, legend_label, y_axis_label)
+#     plot_data!(p_x, t_data, x_data, true, x_domain, legend_label, y_axis_label) # data
 
 #     # Velocity
 #     p_ẋ = plot()
-#     plot_data!(p_ẋ, t_data, ẋ_new, true, x_domain, legend_label_dot, y_axis_label_dot)
+#     plot_data!(p_ẋ, t_data, ẋ_data, true, x_domain, legend_label_dot, y_axis_label_dot)
 
 #     # Acceleration
 #     p_ẍ = plot()
-#     plot_data!(p_ẍ, t_data, ẍ_new, true, x_domain, legend_label_ddot, y_axis_label_ddot)
+#     plot_data!(p_ẍ, t_data, ẍ_data, true, x_domain, legend_label_ddot, y_axis_label_ddot)
     
 #     ## Display trajectory
 #     p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600), title=plot_title)

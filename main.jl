@@ -24,9 +24,6 @@ begin
    using Statistics
 
    using RecursiveArrayTools
-   
-   using Plots
-   using Plots.PlotMeasures
 
    import AbstractDifferentiation as AD
 
@@ -150,18 +147,18 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         ### Equations of motion
         ## Drones
         # Velocity
-        du.x[i][1:length(du.x[i])] = ẋᵢ[1:end]
+        du.x[i][1:length(du.x[i])] = deepcopy(ẋᵢ[1:end]) # deepcopy perhaps unnecessary (as with all other du.x[n] = x[1:end] below) but here to be sure
 
         # Acceleration
         ẍᵢ = (1/params.m_drones[i])*(fᵢ*Rᵢ*e₃ - params.m_drones[i]*params.g*e₃ + Rₗ*Tᵢ_drone) # Might not use Rl when not using assumption?????
-        du.x[i+params.num_drones][1:length(du.x[i+params.num_drones])] = ẍᵢ[1:end]
+        du.x[i+params.num_drones][1:length(du.x[i+params.num_drones])] = deepcopy(ẍᵢ[1:end])
 
         # Angular velocity
-        du.x[i+2*params.num_drones][1:length(du.x[i+2*params.num_drones])] = Ωᵢ[1:end]
+        du.x[i+2*params.num_drones][1:length(du.x[i+2*params.num_drones])] = deepcopy(Ωᵢ[1:end])
 
         # Angular acceleration
         # αᵢ = inv(p.j_drones[i])*(mᵢ - cross(Ωᵢ,(p.j_drones[i]*Ωᵢ)))
-        du.x[i+3*params.num_drones][1:length(du.x[i+3*params.num_drones])] = inv(params.j_drones[i])*(mᵢ - cross(Ωᵢ,(params.j_drones[i]*Ωᵢ)))
+        du.x[i+3*params.num_drones][1:length(du.x[i+3*params.num_drones])] = deepcopy(inv(params.j_drones[i])*(mᵢ - cross(Ωᵢ,(params.j_drones[i]*Ωᵢ))))
         
 
         ### Update cache
@@ -172,18 +169,18 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
 
     ## Load EOM
     # Velocity
-    du.x[1+4*params.num_drones][1:length(du.x[1+4*params.num_drones])] = ẋₗ[1:end]
+    du.x[1+4*params.num_drones][1:length(du.x[1+4*params.num_drones])] = deepcopy(ẋₗ[1:end])
 
     # Acceleration
     ẍₗ = (1/params.m_load)*(-∑RₗTᵢ_load-params.m_load*params.g*e₃)
-    du.x[2+4*params.num_drones][1:length(du.x[2+4*params.num_drones])] = ẍₗ[1:end]
+    du.x[2+4*params.num_drones][1:length(du.x[2+4*params.num_drones])] = deepcopy(ẍₗ[1:end])
 
     # Angular velocity
-    du.x[3+4*params.num_drones][1:length(du.x[3+4*params.num_drones])] = Ωₗ[1:end]
+    du.x[3+4*params.num_drones][1:length(du.x[3+4*params.num_drones])] = deepcopy(Ωₗ[1:end])
 
     # Angular acceleration
     αₗ = inv(params.j_load)*(∑rᵢxTᵢ_load - cross(Ωₗ,(params.j_load*Ωₗ)))
-    du.x[4+4*params.num_drones][1:length(du.x[4+4*params.num_drones])] = αₗ[1:end]
+    du.x[4+4*params.num_drones][1:length(du.x[4+4*params.num_drones])] = deepcopy(αₗ[1:end])
 
     ### Update cache
     params.t_prev = t
@@ -209,7 +206,7 @@ begin
                                     t_prev=0.0, ẋₗ_prev=ones(3), Ωₗ_prev=ones(3), ẋᵢ_prev=[ones(3), ones(3), ones(3)], 
                                     ẍₗ_prev=[0.0, 0.0, 0.0], αₗ_prev=[0.0, 0.0, 0.0], ẍᵢ_prev=Vector{Vector{Float64}}([zeros(3) for _ in 1:NUM_DRONES]))
 
-    t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ = generate_training_data(t_step_data, params_training) #t_data, xᵢ, ẋᵢ, ẍᵢ, θᵢ, Ωᵢ, αᵢ, xₗ, ẋₗ, ẍₗ, θₗ, Ωₗ, αₗ
+    t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎ = generate_training_data(t_step_data, params_training)
     println()
 end
 
@@ -218,33 +215,42 @@ begin
     # Trim training data to remove early numerical estimation errors
     step_first = 5 #4 should be enough as accel stable here and velocity stable at 2. Only need to reach back for veloctiy
     step_last = step_first+3 # TODO: REMOVE END TRIMMING (set step_last = end)
-    
-    t_data_trimmed = t_data[step_first:end] #step_last
-    data_trimmed = data[step_first:end]
+    whole_traj = true
 
-    ẍᵢ_trimmed = ẍᵢ[step_first:end]
-    αᵢ_trimmed = αᵢ[step_first:end]
-    ẍₗ_trimmed = ẍₗ[step_first:end]
-    αₗ_trimmed = αₗ[step_first:end]
+    if whole_traj
+        t_data_trimmed = t_data[step_first:end] #step_last
+        data_trimmed = data[step_first:end]
 
-    fₘ_trimmed = fₘ[step_first:end]
+        ẍᵢ_trimmed = ẍᵢ[step_first:end]
+        αᵢ_trimmed = αᵢ[step_first:end]
+        ẍₗ_trimmed = ẍₗ[step_first:end]
+        αₗ_trimmed = αₗ[step_first:end]
 
-end
+        fₘ_trimmed = fₘ[step_first:end]
 
-# PLOT TRAINING DATA
-begin
-    # Select trimmed or untrimmed data
-    t_data_plot = t_data_trimmed #t_data_trimmed #t_data
-    data_plot = data_trimmed #data_trimmed #data
+        # Training Tnn directly
+        T_trimmed = T[step_first:end]
+        x₍i_rel_Lᵢ₎_trimmed = x₍i_rel_Lᵢ₎[step_first:end]
+        ẋ₍i_rel_Lᵢ₎_trimmed = ẋ₍i_rel_Lᵢ₎[step_first:end]
+        ẍ₍i_rel_Lᵢ₎_trimmed = ẍ₍i_rel_Lᵢ₎[step_first:end]
+    else
+        t_data_trimmed = t_data[step_first:step_last] #step_last
+        data_trimmed = data[step_first:step_last]
 
-    # Load
-    plot_trajectory(t_data_plot, data_plot, ẍₗ_trimmed, false, false, drone_swarm_params, true, false, false) # Linear
-    plot_trajectory(t_data_plot, data_plot, αₗ_trimmed, false, false, drone_swarm_params, true, true, false) # Angular
+        ẍᵢ_trimmed = ẍᵢ[step_first:step_last]
+        αᵢ_trimmed = αᵢ[step_first:step_last]
+        ẍₗ_trimmed = ẍₗ[step_first:step_last]
+        αₗ_trimmed = αₗ[step_first:step_last]
 
-    # Drone
-    plot_trajectory(t_data_plot, data_plot, ẍᵢ_trimmed, false, false, drone_swarm_params, false, false, false) # Linear
-    #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
-    plot_trajectory(t_data_plot, data_plot, αᵢ_trimmed, false, false, drone_swarm_params, false, true, false) # Angular
+        fₘ_trimmed = fₘ[step_first:step_last]
+
+        # Training Tnn directly
+        T_trimmed = T[step_first:step_last]
+        x₍i_rel_Lᵢ₎_trimmed = x₍i_rel_Lᵢ₎[step_first:step_last]
+        ẋ₍i_rel_Lᵢ₎_trimmed = ẋ₍i_rel_Lᵢ₎[step_first:step_last]
+        ẍ₍i_rel_Lᵢ₎_trimmed = ẍ₍i_rel_Lᵢ₎[step_first:step_last]
+    end
+
 end
 
 
@@ -304,8 +310,26 @@ begin
     #reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
 end
 
+# PLOT TRAINING DATA
+begin
+    # Select trimmed or untrimmed data
+    t_data_plot = t_data_trimmed #t_data_trimmed #t_data
+    data_plot = data_trimmed #data_trimmed #data
 
+    # Load
+    plot_trajectory(t_data_plot, data_plot, ẍₗ_trimmed, false, false, drone_swarm_params, true, false, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αₗ_trimmed, false, false, drone_swarm_params, true, true, false) # Angular
 
+    # Drone
+    plot_trajectory(t_data_plot, data_plot, ẍᵢ_trimmed, false, false, drone_swarm_params, false, false, false) # Linear
+    #plot_trajectory(t_data_plot[3:end], data_plot[3:end], ẍᵢ[3:end], drone_swarm_params, p_nn_T_drone, false, false) # Linear
+    plot_trajectory(t_data_plot, data_plot, αᵢ_trimmed, false, false, drone_swarm_params, false, true, false) # Angular
+end
+
+# PLOT TRAINING DATA - Tnn and x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎
+begin
+    plot_tension_nn_ip_op(t_data_trimmed, T_trimmed, x₍i_rel_Lᵢ₎_trimmed, ẋ₍i_rel_Lᵢ₎_trimmed, ẍ₍i_rel_Lᵢ₎_trimmed, true, true, false, nothing, nothing)
+end
 
 # TEST: ONE ODE CALL
 begin
@@ -335,7 +359,7 @@ begin
     #step_size_callback = DiscreteCallback(true, print_step_size) # TODO: Tune this (when save etc.)
 
     p_nn_T_drone_new = deepcopy(p_nn_T_drone)
-    p_nn_T_drone_new[1:5] .= 5000.0
+    p_nn_T_drone_new[1:5] .= Float32[0.1]
 end
 
 begin
@@ -344,7 +368,7 @@ begin
 
     println("l1")
     #println(drone_swarm_params)
-    l1 = loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first) #sol1
+    l1 = loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first) #sol1
     println(l1) 
 
     # Compare
@@ -353,26 +377,44 @@ begin
     println()
     println("l2")
     #println(drone_swarm_params)
-    l2 = loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone_new, step_first) #sol2  
+    l2 = loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone_new, step_first) #sol2  
     println(l2) # Loss should be different to first
+end
+
+# Loss function for t_nn only
+begin
+    # Test new loss function
+    l1 = loss_T_only(T_trimmed, x₍i_rel_Lᵢ₎_trimmed, ẋ₍i_rel_Lᵢ₎_trimmed, ẍ₍i_rel_Lᵢ₎_trimmed, drone_swarm_params, p_nn_T_drone)
+    
+    # Just first cable
+    T_selected = [[T_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    x₍i_rel_Lᵢ₎_selected = [[x₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    ẋ₍i_rel_Lᵢ₎_selected = [[ẋ₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    ẍ₍i_rel_Lᵢ₎_selected = [[ẍ₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+
+    l2 = loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone)
 end
 
 
 # TEST: Gradient
 begin
     # Method 1 - FiniteDiff
-    reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
-    grad = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone) # Easier
-    
-    # 1a - ensure reset cache working. Yes! Get same result as 1
-    # reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
-    # grad1 = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss(data_trimmed, t_data_trimmed, drone_swarm_params, u0, p_nn_T_drone), p_nn_T_drone)
+    step_size = 1e-5
+    #central_diff = FiniteDiff.Central{1}()
+
+    grad = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone) # Easier
+    println("Grad done")
+
+    # 1a - ensure reset cache (now in solve_ode_system) working. Yes! Get same result as 1
+    grad1 = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone)
+    #grad1a = FiniteDiff.finite_difference_gradient(p_nn_T_drone_new-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone_new, step_first), p_nn_T_drone_new)
+    println("Grad1 done")
 
     # Method 2 - FiniteDifferences # Why get different results for FiniteDiff and FiniteDifferences???
     # reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
-    # ab2 = AD.FiniteDifferencesBackend() 
-    # grad2 = AD.gradient(ab2, p_nn_T_drone-> loss(data_trimmed, t_data_trimmed, drone_swarm_params, u0, p_nn_T_drone), p_nn_T_drone)
-
+    ab2 = AD.FiniteDifferencesBackend() 
+    grad2 = AD.gradient(ab2, p_nn_T_drone-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone)
+    println("Grad2 done")
 
     # Method 3 - ForwardDiff. ERROR: "Cannot determine ordering of Dual tags Nothing and ForwardDiff.Tag{var"#201#204", Float32}". 
     # Might need to flatten and unflatten matricies in ODE function to make work???
@@ -400,26 +442,54 @@ begin
 end
 
 
+# Gradient for t_nn loss function only
+begin
+    # Test gradients of new loss function
+    # Method 1 - FiniteDiff 
+    grad = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone) # Easier
+
+    # # 1a - ensure reset cache (now in solve_ode_system) working. Yes! Get same result as 1
+    grad1 = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+
+    # # Method 2 - FiniteDifferences # Note that this result is actually comparable to grad1 unlike ODE case
+    ab2 = AD.FiniteDifferencesBackend() 
+    grad2 = AD.gradient(ab2, p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+
+    # Method 3 - ForwardDiff.
+    grad3 = ForwardDiff.gradient(p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+    ab3 = AD.ForwardDiffBackend()
+    grad3a = AD.gradient(ab3, p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+    
+    # Method 4 - ReverseDiff.
+    ab4 = AD.ReverseDiffBackend()
+    grad4 = AD.gradient(ab4, p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+    
+    # Method 5 - Zygote. 
+    ab5 = AD.ZygoteBackend()
+    grad5 = AD.gradient(ab5, p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+
+    # Method 6 - Tracker 
+    ab6 = AD.TrackerBackend()
+    grad6 = AD.gradient(ab6, p_nn_T_drone-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), p_nn_T_drone)
+
+end
+
+
 # TEST: Training
 # Train with same ODE simply with tension vectors defined using quasi-static assumption like in paper
 # Will later do using real data from simulator
 # Note only trained with specific Lambda used above. Could change lambda to train with different data 
 begin
-    ## prepare_initial
-    #reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
-    
     ## Opt parameters
-    lr = 0.01 #0.01
-
-    ## Plot results/prediction before training
+    lr = 0.01
 
     ## Setup and run the optimization
     # Set up training data callable struct to store training information in callback
-    maxiters = 10000 #500 #1000 #100
+    maxiters = 2000 #500 #500 #1000 #100
     training_data = TrainingData(0, Vector{Float64}(undef, maxiters+1)) # Use Float64[] and push if don't want to pre-allocate array
 
     adtype = Optimization.AutoFiniteDiff() 
-    optf = Optimization.OptimizationFunction((p_nn_T_drone, p)-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), adtype) #(x, p) -> loss(x), adtype)
+    optf = Optimization.OptimizationFunction((p_nn_T_drone, p)-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), adtype) #(x, p) -> loss(x), adtype)
 
     optprob = Optimization.OptimizationProblem(optf, p_nn_T_drone)
     res = Optimization.solve(optprob, OptimizationOptimisers.Adam(lr), maxiters = maxiters, callback = training_data) #TODO: Can we cancel after loss is small enough?? 
@@ -427,11 +497,44 @@ begin
     # Update nn params based on training
     p_nn_T_drone .= res
 
-
     ## Plot loss history
     plot_loss(training_data)
 
-    ## Plot results/prediction after training
+end
+
+
+# TRAIN TNN ONLY
+begin
+    T_selected = T_trimmed
+    x₍i_rel_Lᵢ₎_selected = x₍i_rel_Lᵢ₎_trimmed
+    ẋ₍i_rel_Lᵢ₎_selected = ẋ₍i_rel_Lᵢ₎_trimmed
+    ẍ₍i_rel_Lᵢ₎_selected = ẍ₍i_rel_Lᵢ₎_trimmed
+
+    # Just first cable
+    # T_selected = [[T_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    # x₍i_rel_Lᵢ₎_selected = [[x₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    # ẋ₍i_rel_Lᵢ₎_selected = [[ẋ₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+    # ẍ₍i_rel_Lᵢ₎_selected = [[ẍ₍i_rel_Lᵢ₎_trimmed[i][1]] for i in eachindex(T_trimmed)]
+
+    ## Opt parameters
+    lr = 0.01
+
+    ## Setup and run the optimization
+    # Set up training data callable struct to store training information in callback
+    maxiters = 1000 #500 #500 #1000 #100
+    training_data = TrainingData(0, Vector{Float64}(undef, maxiters+1)) # Use Float64[] and push if don't want to pre-allocate array
+
+    adtype = Optimization.AutoZygote() #.AutoFiniteDiff() 
+    optf = Optimization.OptimizationFunction((p_nn_T_drone, p)-> loss_T_only(T_selected, x₍i_rel_Lᵢ₎_selected, ẋ₍i_rel_Lᵢ₎_selected, ẍ₍i_rel_Lᵢ₎_selected, drone_swarm_params, p_nn_T_drone), adtype) #(x, p) -> loss(x), adtype)
+
+    optprob = Optimization.OptimizationProblem(optf, p_nn_T_drone)
+    res = Optimization.solve(optprob, OptimizationOptimisers.Adam(lr), maxiters = maxiters, callback = training_data) #TODO: Can we cancel after loss is small enough?? 
+
+    # Update nn params based on training
+    p_nn_T_drone .= res
+
+    ## Plot loss history
+    plot_loss(training_data)
 
 end
 
@@ -451,23 +554,24 @@ begin
 
 end
 
+# Plot results for T
+begin
+    # Select trimmed or untrimmed data
+    t_plot = t_data_trimmed
+    T_plot = T_selected
+    x₍i_rel_Lᵢ₎_plot = x₍i_rel_Lᵢ₎_selected
+    ẋ₍i_rel_Lᵢ₎_plot = ẋ₍i_rel_Lᵢ₎_selected
+    ẍ₍i_rel_Lᵢ₎_plot = ẍ₍i_rel_Lᵢ₎_selected
 
-# TODO:
-# Do I need to do data batches, epochs etc??
-# How to visualize
+    # Plot prediction vs data
+    # Prior to training
+    #plot_pred_vs_data(t_data_plot, T_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn_T_drone_pre_train, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
+    plot_tension_nn_ip_op(t_plot, T_plot, x₍i_rel_Lᵢ₎_plot, ẋ₍i_rel_Lᵢ₎_plot, ẍ₍i_rel_Lᵢ₎_plot, true, false, true, drone_swarm_params, p_nn_T_drone_pre_train)
 
-# epochs = 400
-# opt = ADAM(lr)
-# list_plots = []
-# losses = []
+    # Post training
+    plot_tension_nn_ip_op(t_plot, T_plot, x₍i_rel_Lᵢ₎_plot, ẋ₍i_rel_Lᵢ₎_plot, ẍ₍i_rel_Lᵢ₎_plot, true, false, true, drone_swarm_params, p_nn_T_drone)
 
-
-# plot optimized control - not required
-#visualization_callback(res.u, loss(res.u); doplot = true)
-
-# TIPS from Frank:
-# Make sure that function learn is easily -> Try just setting first element to T_NN to train just this.
-# Rember to add hidden layer back in T_nn_drone
+end
 
 
 # More training attempts

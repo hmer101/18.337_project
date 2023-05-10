@@ -100,6 +100,11 @@ function generate_training_data(t_step, params)
     Ωₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
     αₗ = [Vector{Float64}(undef, 3) for _ in 1:length(t_data)]
 
+    # Relative motion of cable attachment points
+    x₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẋ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
+    ẍ₍i_rel_Lᵢ₎ = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)]
+
     # Tension
     T = [[Vector{Float64}(undef, 3) for _ in 1:params.num_drones] for _ in 1:length(t_data)] 
 
@@ -139,21 +144,34 @@ function generate_training_data(t_step, params)
 
             xᵢ[ind][i] = xₗ[ind] + Rₗ*(params.r_cables[i]-Lᵢqᵢ)
             
-            # Velocity (use backwards finite difference)
+            # Velocity (use backwards finite difference) # TODO: SHIFT BACK 1 STEP, USE CENTRAL DIFFERENCE or avoid FD
             ẋᵢ[ind][i] = (xᵢ[ind][i]-xᵢ_prev[i])/t_step
 
             # Acceleration (use second order backwards finite difference)
             ẍᵢ[ind][i] = (ẋᵢ[ind][i]-ẋᵢ_prev[i])/t_step
             
-           
+            
+            ## Drone relative to attachment point
+            # Position
+            r₍i_rel_Lᵢ₎ = -Lᵢqᵢ
+            x₍i_rel_Lᵢ₎[ind][i] = r₍i_rel_Lᵢ₎
+            
+            # Velocity
+            ẋ₍i_rel_Lᵢ₎[ind][i] = ẋᵢ[ind][i] - (ẋₗ[ind] + cross(Ωₗ[ind], params.r_cables[i]))
+
+            # Acceleration
+            ẍ₍Lᵢ₎ = ẍₗ[ind] + cross(αₗ[ind],params.r_cables[i]) + cross(Ωₗ[ind], cross(Ωₗ[ind], params.r_cables[i]))
+            ẍ₍i_rel_Lᵢ₎[ind][i] = ẍᵢ[ind][i] - ẍ₍Lᵢ₎ - cross(αₗ[ind],r₍i_rel_Lᵢ₎) - cross(Ωₗ[ind], cross(Ωₗ[ind],r₍i_rel_Lᵢ₎)) - 2*cross(Ωₗ[ind],ẋ₍i_rel_Lᵢ₎[ind][i])
+
+
             # Orientation (will change with different trajectories)
             θᵢ[ind][i] = [0.0, 0.0, 0.0]
 
             # Angular velocity 
-            Ωᵢ[ind][i] = (θᵢ[ind][i] - θᵢ_prev[i])/t_step # TODO: SHIFT BACK 1 STEP OR USE CENTRAL DIFFERENCE
+            Ωᵢ[ind][i] = (θᵢ[ind][i] - θᵢ_prev[i])/t_step # TODO: SHIFT BACK 1 STEP, USE CENTRAL DIFFERENCE or avoid FD
 
             # Angular acceleration
-            αᵢ[ind][i] = (Ωᵢ[ind][i] - Ωᵢ_prev[i])/t_step # TODO: SHIFT BACK 2 STEPS OR USE CENTRAL DIFFERENCE
+            αᵢ[ind][i] = (Ωᵢ[ind][i] - Ωᵢ_prev[i])/t_step # TODO: SHIFT BACK 2 STEPS, USE CENTRAL DIFFERENCE or avoid FD
 
 
             # Required force
@@ -201,6 +219,6 @@ function generate_training_data(t_step, params)
         #data[i].x[1][1:length(arr_parts[1].x[1])] = [2.0, 2.0, 2.0]
     end
 
-    return t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ
+    return t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎
 
 end

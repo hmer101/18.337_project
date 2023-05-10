@@ -18,10 +18,10 @@ function solve_ode_system(drone_swarm_params, time_save_points, u0, p_nn_T_drone
     
     # Solve the ODE
     prob = ODEProblem(drone_swarm_params, u0, (time_save_points[1], time_save_points[end]), p_nn_T_drone)
-    sol = solve(prob, Tsit5(), saveat=time_save_points, adaptive=adaptive_true, dt=solve_dt)
+    sol = solve(prob, Tsit5(), saveat=time_save_points) #, adaptive=adaptive_true, dt=solve_dt, abstol = 1e-12, reltol = 1e-12)
 
     # Reset cache after solving ODE so non-mutating
-    #reset_cache!(drone_swarm_params, t_data, data, data_ẍₗ, data_αₗ, data_ẍᵢ, step_first)
+    reset_cache!(drone_swarm_params, t_data, data, data_ẍₗ, data_αₗ, data_ẍᵢ, step_first)
 
     return sol
 end
@@ -54,7 +54,7 @@ end
 
 # Take data and t_data so can reset cache in drone_swarm_params therefore not mutating
 # TODO: Group loss params into struct
-function loss(data_trimmed, t_data_trimmed, data, data_ẍₗ, data_αₗ, data_ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first)
+function loss_ode_sys(data_trimmed, t_data_trimmed, data, data_ẍₗ, data_αₗ, data_ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first)
     # Solve 
     #TODO: Turn adaptive solve back on and set dt properly
     t_span = (t_data_trimmed[1], t_data_trimmed[end]) 
@@ -70,17 +70,36 @@ function loss(data_trimmed, t_data_trimmed, data, data_ẍₗ, data_αₗ, data_
     return l
 end
 
+# Loss for the tension prediciton only - not the entire ODE system
+function loss_T_only(data_T, data_x₍i_rel_Lᵢ₎, data_ẋ₍i_rel_Lᵢ₎, data_ẍ₍i_rel_Lᵢ₎, drone_swarm_params, p_nn_T_drone)
+    l = 0
+
+    nn_T_drone = drone_swarm_params.re_nn_T_drone(p_nn_T_drone)
+
+    # For all times in trajectory
+    for step_num in eachindex(data_T) #1:length(data_T)
+        # Across all cables
+        for cable_num in eachindex(data_T[1]) #1:length(data_T[1])
+            nn_ip = vcat(data_x₍i_rel_Lᵢ₎[step_num][cable_num], data_ẋ₍i_rel_Lᵢ₎[step_num][cable_num], data_ẍ₍i_rel_Lᵢ₎[step_num][cable_num])
+            nn_ip = convert.(Float32, nn_ip)
+            
+            pred_T = nn_T_drone(nn_ip)
+
+            l += mean((data_T[step_num][cable_num] - pred_T).^2)
+        end
+    end
+
+    return l
+
+end
+
+
 # Callback function during training to store and print loss information
-function (train_data::TrainingData)(p_nn_T_drone, l_current) #; doplot = false) 
+function (train_data::TrainingData)(p_nn_T_drone, l_current) 
     # Print iteration and loss 
     iter_temp = train_data.iter_cnt
     print("Iter: $iter_temp ")
     println("Loss: $l_current")
-
-    # if doplot
-    #     pl, _ = visualize(p_nn_T_drone)
-    #     display(pl)
-    # end
 
     #push!(train_data.L_hist, l_current) # For non pre-allocated L_hist
     train_data.iter_cnt += 1

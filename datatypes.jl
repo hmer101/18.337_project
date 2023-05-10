@@ -2,10 +2,6 @@
 # 
 # Author: Harvey Merton
 
-# using DifferentialEquations
-# using NeuralPDE
-using Flux
-
 # Define the custom struct
 mutable struct DroneSwarmParams
     # Constants

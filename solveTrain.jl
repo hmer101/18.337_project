@@ -18,7 +18,7 @@ function solve_ode_system(drone_swarm_params, time_save_points, u0, p_nn_T_drone
     
     # Solve the ODE
     prob = ODEProblem(drone_swarm_params, u0, (time_save_points[1], time_save_points[end]), p_nn_T_drone)
-    sol = solve(prob, Tsit5(), saveat=time_save_points) #, adaptive=adaptive_true, dt=solve_dt, abstol = 1e-12, reltol = 1e-12)
+    sol = solve(prob, Tsit5(), saveat=time_save_points, adaptive=adaptive_true, dt=solve_dt) #, abstol = 1e-12, reltol = 1e-12)
 
     # Reset cache after solving ODE so non-mutating
     reset_cache!(drone_swarm_params, t_data, data, data_ẍₗ, data_αₗ, data_ẍᵢ, step_first)

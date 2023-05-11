@@ -135,6 +135,14 @@ function (params::DroneSwarmParams)(du,u,p,t) #ode_sys_drone_swarm_nn!(du,u,p,t)
         Tᵢ_drone = nn_T_drone(nn_ip)
         #Tᵢ_load = -Tᵢ_drone # TODO: Note this Ti_load = -Ti_drone relationship will not hold without assumption
 
+        # Update tension prediction history
+        t_ind = convert(Int, round((t-params.t_start)/params.t_step)) + 1
+
+        params.x₍i_rel_Lᵢ₎_hist[t_ind][i] = deepcopy(x₍i_rel_Lᵢ₎)
+        params.ẋ₍i_rel_Lᵢ₎_hist[t_ind][i] = deepcopy(ẋ₍i_rel_Lᵢ₎)
+        params.ẍ₍i_rel_Lᵢ₎_hist[t_ind][i] = deepcopy(ẍ₍i_rel_Lᵢ₎)
+        params.Tᵢ_drone_hist[t_ind][i] = deepcopy(Tᵢ_drone)
+
         # CAN CHECK TENSION VECTOR direction
         # qᵢ = T₍ind₎[i]/norm(T₍ind₎[i])
         # Lᵢqᵢ = params.l_cables[i]*qᵢ
@@ -200,11 +208,14 @@ begin
     t_step_data = 0.1
     j_drone = [2.32 0 0; 0 2.32 0; 0 0 4]
 
+    T_hist_template = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:1]#length(t_data_trimmed)] # NOT ACTUALLY USED WHEN GENERATING DATA
+
     params_training = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
                                     r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], t_step=0.1, t_start=0.0, fₘ=[[[]]], re_nn_T_drone=nothing, 
                                     t_prev=0.0, ẋₗ_prev=ones(3), Ωₗ_prev=ones(3), ẋᵢ_prev=[ones(3), ones(3), ones(3)], 
-                                    ẍₗ_prev=[0.0, 0.0, 0.0], αₗ_prev=[0.0, 0.0, 0.0], ẍᵢ_prev=Vector{Vector{Float64}}([zeros(3) for _ in 1:NUM_DRONES]))
+                                    ẍₗ_prev=[0.0, 0.0, 0.0], αₗ_prev=[0.0, 0.0, 0.0], ẍᵢ_prev=Vector{Vector{Float64}}([zeros(3) for _ in 1:NUM_DRONES]), 
+                                    x₍i_rel_Lᵢ₎_hist=T_hist_template, ẋ₍i_rel_Lᵢ₎_hist=T_hist_template, ẍ₍i_rel_Lᵢ₎_hist=T_hist_template, Tᵢ_drone_hist=T_hist_template)
 
     t_data, data, ẍᵢ, αᵢ, ẍₗ, αₗ, fₘ, T, x₍i_rel_Lᵢ₎, ẋ₍i_rel_Lᵢ₎, ẍ₍i_rel_Lᵢ₎ = generate_training_data(t_step_data, params_training)
     println()
@@ -300,11 +311,19 @@ begin
     p_nn_T_drone, re_nn_T_drone = Flux.destructure(T_drone_nn)
     p_nn_T_drone_pre_train = copy(p_nn_T_drone) # Store pre-trained values for visualization
 
+    # Initialise history vectors
+    # x₍i_rel_Lᵢ₎_hist = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:length(t_data_trimmed)] 
+    # ẋ₍i_rel_Lᵢ₎_hist = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:length(t_data_trimmed)] 
+    # ẍ₍i_rel_Lᵢ₎_hist = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:length(t_data_trimmed)]
+    # T_hist = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:length(t_data_trimmed)] 
+    T_hist_template = [[Vector{Float64}(undef, 3) for _ in 1:NUM_DRONES] for _ in 1:length(t_data_trimmed)] 
+
     drone_swarm_params = DroneSwarmParams_init(num_drones=NUM_DRONES, g=9.81, m_load=0.225, m_drones=[0.5, 0.5, 0.5], m_cables=[0.1, 0.1, 0.1], l_cables=[1.0, 1.0, 1.0],
                                     j_load = [2.1 0 0; 0 1.87 0; 0 0 3.97], j_drones= [j_drone, j_drone, j_drone], 
                                     r_cables = [[-0.42, -0.27, 0], [0.48, -0.27, 0], [-0.06, 0.55, 0]], t_step=t_step_data, t_start=t_data_trimmed[1], fₘ=fₘ_trimmed, re_nn_T_drone=re_nn_T_drone, 
                                     t_prev=t_data[step_first-1], ẋₗ_prev=data[step_first-1].x[2+4*NUM_DRONES], Ωₗ_prev=data[step_first-1].x[4+4*NUM_DRONES], ẋᵢ_prev=collect(data[step_first-1].x[NUM_DRONES+1:2*NUM_DRONES]), 
-                                    ẍₗ_prev=ẍₗ[step_first-1], αₗ_prev=αₗ[step_first-1], ẍᵢ_prev=ẍᵢ[step_first-1])
+                                    ẍₗ_prev=ẍₗ[step_first-1], αₗ_prev=αₗ[step_first-1], ẍᵢ_prev=ẍᵢ[step_first-1], 
+                                    x₍i_rel_Lᵢ₎_hist=T_hist_template, ẋ₍i_rel_Lᵢ₎_hist=T_hist_template, ẍ₍i_rel_Lᵢ₎_hist=T_hist_template, Tᵢ_drone_hist=T_hist_template)
     
     # Reset cache in struct
     #reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
@@ -406,9 +425,9 @@ begin
     println("Grad done")
 
     # 1a - ensure reset cache (now in solve_ode_system) working. Yes! Get same result as 1
-    grad1 = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone)
-    #grad1a = FiniteDiff.finite_difference_gradient(p_nn_T_drone_new-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone_new, step_first), p_nn_T_drone_new)
-    println("Grad1 done")
+    # grad1 = FiniteDiff.finite_difference_gradient(p_nn_T_drone-> loss_ode_sys(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone, step_first), p_nn_T_drone)
+    # #grad1a = FiniteDiff.finite_difference_gradient(p_nn_T_drone_new-> loss(data_trimmed, t_data_trimmed, data, ẍₗ, αₗ, ẍᵢ, t_data, drone_swarm_params, u0, p_nn_T_drone_new, step_first), p_nn_T_drone_new)
+    # println("Grad1 done")
 
     # Method 2 - FiniteDifferences # Why get different results for FiniteDiff and FiniteDifferences???
     # reset_cache!(drone_swarm_params, t_data, data, ẍₗ, αₗ, ẍᵢ, step_first)
@@ -551,6 +570,9 @@ begin
 
     # Post training
     plot_pred_vs_data(t_data_plot, data_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn_T_drone, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
+
+    # Tension data from solving ODE
+    plot_tension_nn_ip_op(t_data_plot, drone_swarm_params.Tᵢ_drone_hist, drone_swarm_params.x₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẋ₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẍ₍i_rel_Lᵢ₎_hist, true, true, false, drone_swarm_params, p_nn_T_drone)
 
 end
 

@@ -504,7 +504,7 @@ begin
 
     ## Setup and run the optimization
     # Set up training data callable struct to store training information in callback
-    maxiters = 2000 #500 #500 #1000 #100
+    maxiters = 1000 #500 #500 #1000 #100
     training_data = TrainingData(0, Vector{Float64}(undef, maxiters+1)) # Use Float64[] and push if don't want to pre-allocate array
 
     adtype = Optimization.AutoFiniteDiff() 
@@ -572,7 +572,9 @@ begin
     plot_pred_vs_data(t_data_plot, data_plot, ẍₗ_trimmed, αₗ_trimmed, ẍᵢ_trimmed, αᵢ_trimmed, p_nn_T_drone, drone_swarm_params, u0, data, ẍₗ, αₗ, ẍᵢ, αᵢ, t_data, step_first)
 
     # Tension data from solving ODE
-    plot_tension_nn_ip_op(t_data_plot, drone_swarm_params.Tᵢ_drone_hist, drone_swarm_params.x₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẋ₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẍ₍i_rel_Lᵢ₎_hist, true, true, false, drone_swarm_params, p_nn_T_drone)
+    #plot_tension_nn_ip_op(t_data_plot, drone_swarm_params.Tᵢ_drone_hist, drone_swarm_params.x₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẋ₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẍ₍i_rel_Lᵢ₎_hist, true, true, false, drone_swarm_params, p_nn_T_drone)
+    #plot_tension_nn_ip_op(t_data_plot, T_trimmed, drone_swarm_params.x₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẋ₍i_rel_Lᵢ₎_hist, drone_swarm_params.ẍ₍i_rel_Lᵢ₎_hist, true, true, false, drone_swarm_params, p_nn_T_drone)
+    plot_tension_nn_ip_op(t_data_plot, T_trimmed, x₍i_rel_Lᵢ₎_trimmed, ẋ₍i_rel_Lᵢ₎_trimmed, ẍ₍i_rel_Lᵢ₎_trimmed, true, true, false, drone_swarm_params, p_nn_T_drone)
 
 end
 

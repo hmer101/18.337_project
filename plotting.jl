@@ -19,7 +19,7 @@ end
 
 
 # Plot data from a vector containing num_drones x 3-vectors over a time span given in t_data 
-function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plot_components::Bool, x_domain::Tuple{Float64, Float64}, label_prefix::String, y_label::String, seriestype, colors)
+function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plot_components::Bool, plot_legend::Bool, x_domain::Tuple{Float64, Float64}, label_prefix::String, y_label::String, seriestype, colors)   
     # Loop through all drones/cables
     for drone_ind in 1:length(data[1])
         # Extract x,y,z components
@@ -32,17 +32,31 @@ function plot_data!(plot_var, t_data, data::Vector{Vector{Vector{Float64}}}, plo
 
         # Add to plot
         two_dp_formatter(x) = @sprintf("%.2f", x)
+        
+        # Handle load case
+        ind = "$drone_ind"
+        if length(data[1]) == 1
+            ind = "L"
+        end
 
         if plot_components
             # Plot components for all time points seriestype =:scatter
             selected_colors = [colors[drone_ind][1] colors[drone_ind][2] colors[drone_ind][3]]
-
-            plot!(plot_var, t_data, [comp1 comp2 comp3], xlims=x_domain, seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = :topright, label = [string("$label_prefix$drone_ind", "_x") string("$label_prefix$drone_ind", "_y") string("$label_prefix$drone_ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
+            
+            if plot_legend
+                plot!(plot_var, t_data, [comp1 comp2 comp3], xlims=x_domain, ylims=[-2.0, 2.0], seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, label = [string("$label_prefix$ind", "_x") string("$label_prefix$ind", "_y") string("$label_prefix$ind", "_z")], xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #legend = :topright,
+            else
+                if y_label == "Location (m)" #cmp(y_label, "Location (m)") == 0:
+                    plot!(plot_var, t_data, [comp1 comp2 comp3], xlims=x_domain, ylims=[-1.0, 1.0], seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = false, xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
+                else
+                    plot!(plot_var, t_data, [comp1 comp2 comp3], xlims=x_domain, ylims=[-5.0, 5.0], seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = false, xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter)
+                end
+            end
         else
             # Plot magnitude for all time points
             selected_colors = colors[drone_ind][1]
 
-            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = :topright, label = "$label_prefix$drone_ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
+            plot!(plot_var, t_data, magnitude, xlims=x_domain, seriestype = seriestype, linecolor = selected_colors, markercolor = selected_colors, legend = :topright, label = "$label_prefix$ind", xlabel = "Time (s)", ylabel = "$y_label", yformatter=two_dp_formatter) #right_margin = 5mm) #margin=(0mm, 5mm, 0mm, 0mm))
         end
 
     end
@@ -156,15 +170,15 @@ function plot_trajectory(t_data, data, accel_data, t_pred, u_pred, drone_swarm_p
 
     # Position
     p_x = plot()
-    plot_data!(p_x, t_data, x_data, true, x_domain, legend_label, y_axis_label, seriestype_data, colors) # data
+    plot_data!(p_x, t_data, x_data, true, false, x_domain, legend_label, y_axis_label, seriestype_data, colors) # data
 
     # Velocity
     p_ẋ = plot()
-    plot_data!(p_ẋ, t_data, ẋ_data, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_data, colors)
+    plot_data!(p_ẋ, t_data, ẋ_data, true, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_data, colors)
 
     # Acceleration
     p_ẍ = plot()
-    plot_data!(p_ẍ, t_data, ẍ_data, true, x_domain, legend_label_ddot, y_axis_label_ddot, seriestype_data, colors)
+    plot_data!(p_ẍ, t_data, ẍ_data, true, false, x_domain, legend_label_ddot, y_axis_label_ddot, seriestype_data, colors)
     
     # Plot predicted solution alongside data if requested (no acceleration prediciton as acceleration not in state)
     if plot_sol
@@ -175,16 +189,16 @@ function plot_trajectory(t_data, data, accel_data, t_pred, u_pred, drone_swarm_p
         seriestype_pred = :line
 
         # Position prediction
-        plot_data!(p_x, t_pred, x_pred, true, x_domain, legend_label, y_axis_label, seriestype_pred, colors)
+        plot_data!(p_x, t_pred, x_pred, true, false, x_domain, legend_label, y_axis_label, seriestype_pred, colors)
 
         # Velocity prediction
-        plot_data!(p_ẋ, t_pred, ẋ_pred, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_pred, colors)
+        plot_data!(p_ẋ, t_pred, ẋ_pred, true, true, x_domain, legend_label_dot, y_axis_label_dot, seriestype_pred, colors)
 
 
     end
 
     ## Display trajectory
-    p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600), title=plot_title)
+    p_traj = plot(p_x, p_ẋ, p_ẍ, layout=(3,1), size=(800, 600)) #, title=plot_title)
     display(p_traj)
 end
 
@@ -214,20 +228,34 @@ function plot_tension_nn_ip_op(t_data, T_data::Vector{Vector{Vector{Float64}}}, 
     colors = [[:green, :blue, :purple], [:red, :lime, :magenta], [:black, :grey, :aqua]]
 
     p_tension = plot()
-    plot_data!(p_tension, t_data, T_data, plot_components, x_domain, "T_data_","Tension (N)", seriestype_data, colors)
+    plot_data!(p_tension, t_data, T_data, plot_components, true, x_domain, "T_data_","Tension (N)", seriestype_data, colors)
     
+
     ## Plot trajectory data
     # Position
     p_x = plot()
-    plot_data!(p_x, t_data, x₍i_rel_Lᵢ₎, plot_components, x_domain, "x₍i_rel_Lᵢ₎_", "Location (m)", seriestype_data, colors)
+    plot_data!(p_x, t_data, x₍i_rel_Lᵢ₎, plot_components, false, x_domain, "x₍i_rel_Lᵢ₎_data_", "Location (m)", seriestype_data, colors)
 
     # Velocity
     p_ẋ = plot()
-    plot_data!(p_ẋ, t_data, ẋ₍i_rel_Lᵢ₎, plot_components, x_domain, "ẋ₍i_rel_Lᵢ₎_", "Velocity (m/s)", seriestype_data, colors) #t_data[2:end]
+    plot_data!(p_ẋ, t_data, ẋ₍i_rel_Lᵢ₎, plot_components, true, x_domain, "ẋ₍i_rel_Lᵢ₎_data_", "Velocity (m/s)", seriestype_data, colors) #t_data[2:end]
 
     # Acceleration
     p_ẍ = plot()
-    plot_data!(p_ẍ, t_data, ẍ₍i_rel_Lᵢ₎, plot_components, x_domain, "ẍ₍i_rel_Lᵢ₎_", "Acceleration (m/s²)", seriestype_data, colors) #t_data[3:end]
+    plot_data!(p_ẍ, t_data, ẍ₍i_rel_Lᵢ₎, plot_components, false, x_domain, "ẍ₍i_rel_Lᵢ₎_data_", "Acceleration (m/s²)", seriestype_data, colors) #t_data[3:end]
+
+
+    ## Plot trajectory data
+    seriestype_data = :line
+    # Position
+    plot_data!(p_x, t_data, drone_swarm_params.x₍i_rel_Lᵢ₎_hist, plot_components, false, x_domain, "x₍i_rel_Lᵢ₎_", "Location (m)", seriestype_data, colors)
+
+    # Velocity
+    plot_data!(p_ẋ, t_data, drone_swarm_params.ẋ₍i_rel_Lᵢ₎_hist, plot_components, true, x_domain, "ẋ₍i_rel_Lᵢ₎_", "Velocity (m/s)", seriestype_data, colors) 
+
+    # Acceleration
+    plot_data!(p_ẍ, t_data, drone_swarm_params.ẍ₍i_rel_Lᵢ₎_hist, plot_components, false, x_domain, "ẍ₍i_rel_Lᵢ₎_", "Acceleration (m/s²)", seriestype_data, colors) 
+
 
 
     ## Plot tension predicitons if requested
@@ -248,7 +276,7 @@ function plot_tension_nn_ip_op(t_data, T_data::Vector{Vector{Vector{Float64}}}, 
             end
         end
 
-        plot_data!(p_tension, t_data, T_pred, plot_components, x_domain, "T_pred_","Tension (N)", seriestype_pred, colors)
+        plot_data!(p_tension, t_data, T_pred, plot_components, true, x_domain, "T_pred_","Tension (N)", seriestype_pred, colors)
     end
 
 
